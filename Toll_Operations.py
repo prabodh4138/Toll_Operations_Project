@@ -1,32 +1,36 @@
 import streamlit as st
+ 
+# Import your modules here
 import diesel_monitoring_app
-
+# import eb_meter_reading_app
+# import highway_reading_app
+# import inventory_management_app
+ 
 def main():
-    st.title("🛣️ Toll Plaza Operations")
-
+    st.set_page_config(page_title="🛣️ Toll Plaza Operations", layout="wide")
+    st.title("🛣️ Toll Plaza Operations Modular App")
+ 
     module = st.sidebar.selectbox(
-        "Select Module",
+        "📂 Select Module",
         [
             "DG Monitoring",
-            "EB Meter Reading",
-            "Highway Reading",
+            "EB Meter Reading (Coming Soon)",
+            "Highway Reading (Coming Soon)",
             "Inventory Management (Coming Soon)"
         ]
     )
-
+ 
     if module == "DG Monitoring":
-        diesel_monitoring_app.run()
-
-    elif module == "EB Meter Reading":
-        import eb_meter_reading_app
-        eb_meter_reading_app.run()
-
-    elif module == "Highway Reading":
-        import highway_reading_app
-        highway_reading_app.run()
-
+diesel_monitoring_app.run()
+ 
+    elif module == "EB Meter Reading (Coming Soon)":
+st.info("🛠️ EB Meter Reading Module will be added soon.")
+ 
+    elif module == "Highway Reading (Coming Soon)":
+st.info("🛠️ Highway Reading Module will be added soon.")
+ 
     elif module == "Inventory Management (Coming Soon)":
-        st.info("🛠️ Inventory Management module is under development and will be available soon.")
-
+st.info("🛠️ Inventory Management Module will be added soon.")
+ 
 if __name__ == "__main__":
     main()
