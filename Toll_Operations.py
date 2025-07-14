@@ -21,7 +21,7 @@ def main():
     )
  
     if module == "DG Monitoring":
-diesel_monitoring_app.run()
+       diesel_monitoring_app.run()
  
     elif module == "EB Meter Reading (Coming Soon)":
 st.info("🛠️ EB Meter Reading Module will be added soon.")
