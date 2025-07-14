@@ -26,7 +26,7 @@ def run():
  
     # ---------------- Helper: Fetch Live Status ----------------
     def fetch_live_status(toll_plaza, consumer_number):
-        resp = supabase.table("highway_live_status").select("*").eq("toll_plaza", toll_plaza).eq("consumer_number", consumer_number).execute()
+        resp = supabase.table("highway_live_status").select("*").eq("toll_plaza", toll_plaza).eq("consumer_no", consumer_no).execute()
         if resp.data:
             data = resp.data[0]
             return data["opening_kwh"], data["opening_kvah"]
