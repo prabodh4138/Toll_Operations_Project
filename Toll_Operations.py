@@ -24,13 +24,13 @@ def main():
        diesel_monitoring_app.run()
  
     elif module == "EB Meter Reading (Coming Soon)":
-st.info("🛠️ EB Meter Reading Module will be added soon.")
+         st.info("🛠️ EB Meter Reading Module will be added soon.")
  
     elif module == "Highway Reading (Coming Soon)":
-st.info("🛠️ Highway Reading Module will be added soon.")
+         st.info("🛠️ Highway Reading Module will be added soon.")
  
     elif module == "Inventory Management (Coming Soon)":
-st.info("🛠️ Inventory Management Module will be added soon.")
+         st.info("🛠️ Inventory Management Module will be added soon.")
  
 if __name__ == "__main__":
     main()
