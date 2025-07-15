@@ -44,7 +44,7 @@ def run():
         st.info(f"Opening KWH: {opening_kwh}")
         st.info(f"Opening KVAH: {opening_kvah}")
  
-        closing_kwh = st.number_input("Closing KWH", min_value=opening_kwh, step=0.01")
+        closing_kwh = st.number_input("Closing KWH", min_value=opening_kwh,step=0.01)
         closing_kvah = st.number_input("Closing KVAH", min_value=opening_kvah)
         pf = st.number_input("Power Factor (0-1)", min_value=0.0, max_value=1.0)
         md = st.number_input("Maximum Demand (kVA)", min_value=0.0)
