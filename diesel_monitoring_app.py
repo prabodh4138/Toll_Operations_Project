@@ -128,7 +128,7 @@ def run():
         toll_plaza = st.selectbox("Filter by Toll Plaza", ["TP01", "TP02", "TP03"])
         dg_name = st.selectbox("Filter by DG Name", ["DG1", "DG2"])
  
-        data = supabase.table("transactions").select("*").eq("toll_plaza", toll_plaza).eq("dg_name", dg_name).order("id", desc=True).limit(10).execute()
+        data = supabase.table("dg_meter_readings").select("*").eq("toll_plaza", toll_plaza).eq("dg_name", dg_name).order("id", desc=True).limit(10).execute()
         df = pd.DataFrame(data.data)
         st.dataframe(df)
  
