@@ -25,7 +25,7 @@ def calculate_net_rh(opening_rh, closing_rh):
         return "00:00"
  
 def get_live_values(toll_plaza, dg_name):
-    response = supabase.table("live_status").select("*").eq("toll_plaza", toll_plaza).eq("dg_name", dg_name).execute()
+    response = supabase.table("dg_live_status").select("*").eq("toll_plaza", toll_plaza).eq("dg_name", dg_name).execute()
     if response.data:
         row = response.data[0]
         return (
@@ -38,7 +38,7 @@ def get_live_values(toll_plaza, dg_name):
         return (0.0, 0.0, 0.0, "00:00")
  
 def update_live_status(toll_plaza, dg_name, barrel_stock, diesel_stock, opening_kwh, opening_rh):
-    supabase.table("live_status").upsert({
+    supabase.table("dg_live_status").upsert({
         "toll_plaza": toll_plaza,
         "dg_name": dg_name,
         "updated_plaza_barrel_stock": barrel_stock,
@@ -93,7 +93,7 @@ def run():
  
         if st.button("Submit Entry"):
             try:
-                supabase.table("transactions").insert({
+                supabase.table("dg_meter_readings").insert({
                     "date": date,
                     "toll_plaza": toll_plaza,
                     "dg_name": dg_name,
