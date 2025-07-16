@@ -132,62 +132,49 @@ def run():
         date = datetime.now().strftime("%Y-%m-%d")
  
         if st.button("Submit Entry"):
-         data = {
-        "date": date,
-        "toll_plaza": toll_plaza,
-        "dg_name": dg_name,
-        "diesel_purchase": diesel_purchase,
-        "diesel_topup": diesel_topup,
-        "updated_plaza_barrel_stock": updated_barrel_stock,
-        "opening_diesel_stock": opening_diesel_stock,
-        "closing_diesel_stock": closing_diesel_stock,
-        "diesel_consumption": diesel_consumption,
-        "opening_kwh": opening_kwh,
-        "closing_kwh": closing_kwh,
-        "net_kwh": net_kwh,
-        "opening_rh": opening_rh,
-        "closing_rh": closing_rh,
-        "net_rh": net_rh,
-        "maximum_demand": maximum_demand,
-        "remarks": remarks
-    }
+            data = {
+                "date": date,
+                "toll_plaza": toll_plaza,
+                "dg_name": dg_name,
+                "diesel_purchase": diesel_purchase,
+                "diesel_topup": diesel_topup,
+                "updated_plaza_barrel_stock": updated_barrel_stock,
+                "opening_diesel_stock": opening_diesel_stock,
+                "closing_diesel_stock": closing_diesel_stock,
+                "diesel_consumption": diesel_consumption,
+                "opening_kwh": opening_kwh,
+                "closing_kwh": closing_kwh,
+                "net_kwh": net_kwh,
+                "opening_rh": opening_rh,
+                "closing_rh": closing_rh,
+                "net_rh": net_rh,
+                "maximum_demand": maximum_demand,
+                "remarks": remarks
+            }
  
-    resp = supabase.table("dg_transactions").insert(data).execute()
+            resp = supabase.table("dg_transactions").insert(data).execute()
+            if resp.data:
+                # Update dg_live_status for barrel stock
+                supabase.table("dg_live_status").upsert({
+                    "toll_plaza": toll_plaza,
+                    "updated_plaza_barrel_stock": updated_barrel_stock
+                }).execute()
  
-    if hasattr(resp, "data") and resp.data:
-        # Update dg_live_status for plaza barrel stock
-        supabase.table("dg_live_status").upsert({
-            "toll_plaza": toll_plaza,
-            "updated_plaza_barrel_stock": updated_barrel_stock
-        }).execute()
+                # Auto-update opening parameters to closing parameters for next cycle
+                supabase.table("dg_opening_status").upsert({
+                    "toll_plaza": toll_plaza,
+                    "dg_name": dg_name,
+                    "opening_diesel_stock": closing_diesel_stock,
+                    "opening_kwh": closing_kwh,
+                    "opening_rh": closing_rh
+                }).execute()
  
-        # Update dg_opening_status for next cycle
-        supabase.table("dg_opening_status").upsert({
-            "toll_plaza": toll_plaza,
-            "dg_name": dg_name,
-            "opening_diesel_stock": closing_diesel_stock,
-            "opening_kwh": closing_kwh,
-            "opening_rh": closing_rh
-        }).execute()
+                st.success("✅ Entry submitted and opening parameters updated for next entry.")
+                st.rerun()
+            else:
+                st.error("❌ Submission failed.")
  
-        st.success("✅ Entry submitted and opening parameters updated for next cycle.")
- 
-        # Reset user input parameters to zero
-        st.session_state["diesel_purchase"] = 0.0
-        st.session_state["diesel_topup"] = 0.0
-        st.session_state["closing_diesel_stock"] = 0.0
-        st.session_state["closing_kwh"] = 0.0
-        st.session_state["closing_rh"] = ""
-        st.session_state["maximum_demand"] = 0.0
-        st.session_state["remarks"] = ""
- 
-        st.rerun()
- 
-    else:
-        st.error(f"❌ Submission failed: {resp}")
- 
- 
-     elif choice == "Last 10 Transactions":
+    elif choice == "Last 10 Transactions":
         st.header("📜 Last 10 Transactions")
         resp = supabase.table("dg_transactions").select("*").order("id", desc=True).limit(10).execute()
         if resp.data:
