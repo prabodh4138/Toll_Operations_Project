@@ -162,7 +162,7 @@ def run():
                     update_live_plaza_stock(toll_plaza, init_barrel_stock)
                     update_opening_status(toll_plaza, dg_name, init_diesel_stock, init_opening_kwh, init_opening_rh)
                     st.success("✅ Initialization data saved successfully.")
-                    st.experimental_rerun()
+                    st.rerun()
                 except Exception as e:
                     st.error(f"❌ Initialization failed: {e}")
         else:
