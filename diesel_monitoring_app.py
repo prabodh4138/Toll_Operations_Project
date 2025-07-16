@@ -148,7 +148,7 @@ st.info(f"**Opening RH: {opening_rh}**")
                         }).execute()
                         st.success("✅ Plaza barrel stock initialized.")
                         time.sleep(1.5)
-                        st.experimental_rerun()
+                        st.rerun()
                     except Exception as e:
                         st.error(f"❌ Initialization failed: {e}")
  
