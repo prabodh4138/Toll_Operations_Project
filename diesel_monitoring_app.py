@@ -132,7 +132,7 @@ def run():
         date = datetime.now().strftime("%Y-%m-%d")
  
         if st.button("Submit Entry"):
-    data = {
+         data = {
         "date": date,
         "toll_plaza": toll_plaza,
         "dg_name": dg_name,
