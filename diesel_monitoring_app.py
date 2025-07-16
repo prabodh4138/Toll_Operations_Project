@@ -4,8 +4,8 @@ from datetime import datetime
 import pandas as pd
  
 # Direct Supabase credentials (EDIT HERE)
-SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
-SUPABASE_KEY = "YOUR_SERVICE_ROLE_KEY"
+SUPABASE_URL = "https://maqujrsyrwrlirjodgoi.supabase.co""
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1hcXVqcnN5cndybGlyam9kZ29pIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI1MDc4MTUsImV4cCI6MjA2ODA4MzgxNX0.LkQGWv21Nuh8GUO-nY6KUHTB3VULxvXnGcwK0E_PbTA"
  
 # Initialize Supabase
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
