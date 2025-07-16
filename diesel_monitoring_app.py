@@ -181,7 +181,7 @@ def run():
         st.session_state["maximum_demand"] = 0.0
         st.session_state["remarks"] = ""
  
-        st.experimental_rerun()
+        st.rerun()
  
     else:
         st.error(f"❌ Submission failed: {resp}")
