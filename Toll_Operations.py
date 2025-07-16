@@ -1,7 +1,7 @@
 import streamlit as st
 import diesel_monitoring_app
 import eb_meter_reading_app
-import highway_meter_reading 
+import highway_reading_app
 def main():
     st.title("🛣️ Sekura Toll Plaza Operations Dashboard")
  
@@ -22,7 +22,7 @@ def main():
         eb_meter_reading_app.run()
  
     elif module == "Highway Meter Reading":
-        st.info("🚧 This module is under development and will be available soon.")
+        highway_reading_app.run()
  
     elif module == "Inventory Management (Coming Soon)":
         st.info("🚧 This module is under development and will be available soon.")
