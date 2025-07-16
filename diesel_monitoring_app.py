@@ -1,174 +1,184 @@
 import streamlit as st
+from datetime import datetime, timedelta
 from supabase import create_client
-from datetime import datetime
-from dotenv import load_dotenv
-import os
 import pandas as pd
+from io import StringIO
+import os
  
-# Load .env
-load_dotenv()
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+# -------------------- Supabase Connection --------------------
+url = st.secrets["SUPABASE_URL"]
+key = st.secrets["SUPABASE_KEY"]
+supabase = create_client(url, key)
  
-# Parse RH "hh:mm" to minutes
-def parse_rh(rh_str):
-    try:
-        h, m = rh_str.strip().split(":")
-        h = int(h)
-        m = int(m)
-        if m >= 60 or h < 0 or m < 0:
-            return None
-        return h * 60 + m
-    except:
-        return None
+# -------------------- Helper Functions --------------------
  
-# Calculate net RH "hh:mm"
+def get_live_plaza_stock(toll_plaza):
+    resp = supabase.table("dg_live_status").select("updated_plaza_barrel_stock").eq("toll_plaza", toll_plaza).execute()
+    if resp.data and resp.data[0]["updated_plaza_barrel_stock"] is not None:
+        return resp.data[0]["updated_plaza_barrel_stock"]
+    return 0.0
+ 
+def get_opening_status(toll_plaza, dg_name):
+    resp = supabase.table("dg_opening_status").select("*").eq("toll_plaza", toll_plaza).eq("dg_name", dg_name).execute()
+    if resp.data:
+        row = resp.data[0]
+        return (
+            row.get("opening_diesel_stock", 0.0),
+            row.get("opening_kwh", 0.0),
+            row.get("opening_rh", "00:00")
+        )
+    return (0.0, 0.0, "00:00")
+ 
+def update_live_plaza_stock(toll_plaza, updated_plaza_barrel_stock):
+    supabase.table("dg_live_status").upsert({
+        "toll_plaza": toll_plaza,
+        "updated_plaza_barrel_stock": updated_plaza_barrel_stock,
+        "last_updated": datetime.utcnow().isoformat()
+    }).execute()
+ 
+def update_opening_status(toll_plaza, dg_name, opening_diesel_stock, opening_kwh, opening_rh):
+    supabase.table("dg_opening_status").upsert({
+        "toll_plaza": toll_plaza,
+        "dg_name": dg_name,
+        "opening_diesel_stock": opening_diesel_stock,
+        "opening_kwh": opening_kwh,
+        "opening_rh": opening_rh,
+        "last_updated": datetime.utcnow().isoformat()
+    }).execute()
+ 
 def calculate_net_rh(opening_rh, closing_rh):
-    open_min = parse_rh(opening_rh)
-    close_min = parse_rh(closing_rh)
-    if open_min is None or close_min is None:
-        return None, "❌ RH format must be hh:mm (e.g., 3210:45)"
-    if close_min < open_min:
-        return None, "❌ Closing RH must be greater than or equal to Opening RH."
-    net_min = close_min - open_min
-    return f"{net_min // 60}:{net_min % 60:02d}", None
+    fmt = "%H:%M"
+    tdelta = datetime.strptime(closing_rh, fmt) - datetime.strptime(opening_rh, fmt)
+    if tdelta.total_seconds() < 0:
+        tdelta += timedelta(days=1)
+    hours, remainder = divmod(tdelta.seconds, 3600)
+    minutes = remainder // 60
+    return f"{hours:02}:{minutes:02}"
  
+# -------------------- Main App --------------------
 def run():
-    st.title("⚡ DG Monitoring Module")
+    st.title("🛢️ DG Monitoring Module")
  
-    menu = ["User Entry", "Admin Initialization", "Last 10 Transactions"]
-    choice = st.sidebar.selectbox("Select Action", menu)
+    menu = ["User Block", "Last 10 Transactions", "Admin Block", "Download CSV"]
+    choice = st.sidebar.selectbox("Select Block", menu)
  
-    if choice == "Admin Initialization":
-        st.header("🛠️ Admin Initialization")
+    if choice == "User Block":
+        st.subheader("🛠️ User Block - Data Entry")
+        date = st.date_input("Date", datetime.now()).strftime("%Y-%m-%d")
         toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
-        dg_name = st.selectbox("Select DG", ["DG1", "DG2"])
-        opening_diesel_stock = st.number_input("Opening Diesel Stock (L)", min_value=0.0)
-        opening_kwh = st.number_input("Opening KWH", min_value=0.0)
-        opening_rh = st.text_input("Opening RH (hh:mm)")
+        dg_name = st.selectbox("Select DG Name", ["DG1", "DG2"])
  
-        if st.button("Initialize"):
-            if parse_rh(opening_rh) is None:
-                st.error("❌ Invalid RH format. Use hh:mm.")
-                return
+        plaza_barrel_stock = get_live_plaza_stock(toll_plaza)
+        st.info(f"Plaza Barrel Stock (Virtual): {plaza_barrel_stock} L")
  
-            data = {
-                "toll_plaza": toll_plaza,
-                "dg_name": dg_name,
-                "opening_diesel_stock": opening_diesel_stock,
-                "opening_kwh": opening_kwh,
-                "opening_rh": opening_rh
-            }
+        opening_diesel_stock, opening_kwh, opening_rh = get_opening_status(toll_plaza, dg_name)
+        st.info(f"Opening Diesel Stock at DG: {opening_diesel_stock} L")
+        st.info(f"Opening KWH: {opening_kwh}")
+        st.info(f"Opening RH: {opening_rh}")
  
-            resp = supabase.table("dg_opening_status").upsert(data).execute()
-            if resp.error is None:
-                st.success("✅ Initialization saved successfully.")
+        diesel_purchase = st.number_input("Diesel Purchase (L)", min_value=0.0)
+        diesel_topup = st.number_input("Diesel Top Up to DG (L)", min_value=0.0)
+        updated_plaza_barrel_stock = plaza_barrel_stock + diesel_purchase - diesel_topup
+        st.success(f"Updated Plaza Barrel Stock: {updated_plaza_barrel_stock} L")
  
-                # Ensure dg_live_status is initialized for plaza
-                live_resp = supabase.table("dg_live_status").select("*").eq("toll_plaza", toll_plaza).execute()
-                if not live_resp.data:
-                    supabase.table("dg_live_status").insert({
-                        "toll_plaza": toll_plaza,
-                        "updated_plaza_barrel_stock": 0
-                    }).execute()
-                st.rerun()
-            else:
-                st.error(f"❌ Initialization failed: {resp.error}")
- 
-    elif choice == "User Entry":
-        st.header("📝 DG Daily Entry")
- 
-        toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
-        dg_name = st.selectbox("Select DG", ["DG1", "DG2"])
- 
-        diesel_purchase = st.number_input("Diesel Purchase (L)", min_value=0.0, value=0.0)
-        diesel_topup = st.number_input("Diesel Topup (L)", min_value=0.0, value=0.0)
- 
-        # Fetch opening values
-        resp = supabase.table("dg_opening_status").select("*").eq("toll_plaza", toll_plaza).eq("dg_name", dg_name).execute()
-        if not resp.data:
-            st.warning("⚠️ Please initialize first in Admin Initialization.")
-            return
-        data = resp.data[0]
-        opening_diesel_stock = data.get("opening_diesel_stock", 0)
-        opening_kwh = data.get("opening_kwh", 0)
-        opening_rh = data.get("opening_rh", "0:00")
- 
-        st.info(f"🔹 Opening Diesel Stock: {opening_diesel_stock} L")
-        st.info(f"🔹 Opening KWH: {opening_kwh}")
-        st.info(f"🔹 Opening RH: {opening_rh}")
- 
-        closing_diesel_stock = st.number_input("Closing Diesel Stock (L)", min_value=0.0)
-        if closing_diesel_stock > opening_diesel_stock + diesel_topup:
-            st.error("❌ Closing Diesel Stock cannot exceed (Opening + Topup).")
-            return
+        closing_diesel_stock = st.number_input("Closing Diesel Stock at DG (L)", min_value=0.0)
         diesel_consumption = opening_diesel_stock + diesel_topup - closing_diesel_stock
+        st.success(f"Diesel Consumption: {diesel_consumption} L")
  
-        closing_kwh = st.number_input("Closing KWH", min_value=0.0)
-        if closing_kwh < opening_kwh:
-            st.error("❌ Closing KWH cannot be less than Opening KWH.")
-            return
+        closing_kwh = st.number_input("Closing KWH", min_value=opening_kwh)
         net_kwh = closing_kwh - opening_kwh
+        st.success(f"Net KWH: {net_kwh}")
  
-        closing_rh = st.text_input("Closing RH (hh:mm)")
-        net_rh, rh_error = calculate_net_rh(opening_rh, closing_rh)
-        if rh_error:
-            st.error(rh_error)
-            return
+        closing_rh = st.text_input("Closing RH (HH:MM)", "00:00")
+        if closing_rh != "00:00":
+            try:
+                net_rh = calculate_net_rh(opening_rh, closing_rh)
+                st.success(f"Net RH: {net_rh}")
+            except:
+                st.error("Incorrect RH format, use HH:MM.")
+                return
+        else:
+            net_rh = "00:00"
  
         maximum_demand = st.number_input("Maximum Demand (kVA)", min_value=0.0)
-        remarks = st.text_area("Remarks (optional)")
-        date = datetime.now().strftime("%Y-%m-%d")
+        remarks = st.text_area("Remarks")
  
         if st.button("Submit Entry"):
-            # Update dg_live_status
-            live_resp = supabase.table("dg_live_status").select("*").eq("toll_plaza", toll_plaza).execute()
-            current_barrel = live_resp.data[0]["updated_plaza_barrel_stock"] if live_resp.data else 0
-            updated_barrel = current_barrel + diesel_purchase
+            try:
+                supabase.table("dg_transactions").insert({
+                    "date": date,
+                    "toll_plaza": toll_plaza,
+                    "dg_name": dg_name,
+                    "diesel_purchase": diesel_purchase,
+                    "diesel_topup": diesel_topup,
+                    "updated_plaza_barrel_stock": updated_plaza_barrel_stock,
+                    "opening_diesel_stock": opening_diesel_stock,
+                    "closing_diesel_stock": closing_diesel_stock,
+                    "diesel_consumption": diesel_consumption,
+                    "opening_kwh": opening_kwh,
+                    "closing_kwh": closing_kwh,
+                    "net_kwh": net_kwh,
+                    "opening_rh": opening_rh,
+                    "closing_rh": closing_rh,
+                    "net_rh": net_rh,
+                    "maximum_demand": maximum_demand,
+                    "remarks": remarks
+                }).execute()
  
-            supabase.table("dg_live_status").upsert({
-                "toll_plaza": toll_plaza,
-                "updated_plaza_barrel_stock": updated_barrel
-            }).execute()
+                update_live_plaza_stock(toll_plaza, updated_plaza_barrel_stock)
+                update_opening_status(toll_plaza, dg_name, closing_diesel_stock, closing_kwh, closing_rh)
  
-            transaction = {
-                "date": date,
-                "toll_plaza": toll_plaza,
-                "dg_name": dg_name,
-                "diesel_purchase": diesel_purchase,
-                "diesel_topup": diesel_topup,
-                "updated_plaza_barrel_stock": updated_barrel,
-                "opening_diesel_stock": opening_diesel_stock,
-                "closing_diesel_stock": closing_diesel_stock,
-                "diesel_consumption": diesel_consumption,
-                "opening_kwh": opening_kwh,
-                "closing_kwh": closing_kwh,
-                "net_kwh": net_kwh,
-                "opening_rh": opening_rh,
-                "closing_rh": closing_rh,
-                "net_rh": net_rh,
-                "maximum_demand": maximum_demand,
-                "remarks": remarks
-            }
-            insert_resp = supabase.table("dg_transactions").insert(transaction).execute()
-            if insert_resp.error is None:
-                st.success("✅ Entry submitted successfully.")
+                st.success("✅ Data submitted successfully.")
                 st.rerun()
-            else:
-                st.error(f"❌ Submission failed: {insert_resp.error}")
+            except Exception as e:
+                st.error(f"❌ Submission failed: {e}")
  
     elif choice == "Last 10 Transactions":
-        st.header("📜 Last 10 Transactions")
-        resp = supabase.table("dg_transactions").select("*").order("id", desc=True).limit(10).execute()
+        st.subheader("📄 Last 10 DG Transactions")
+        toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"], key="last_tp")
+        dg_name = st.selectbox("Select DG Name", ["DG1", "DG2"], key="last_dg")
+        resp = supabase.table("dg_transactions").select("*").eq("toll_plaza", toll_plaza).eq("dg_name", dg_name).order("id", desc=True).limit(10).execute()
         if resp.data:
             df = pd.DataFrame(resp.data)
             st.dataframe(df)
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download CSV", data=csv, file_name="dg_last_10_transactions.csv", mime="text/csv")
         else:
             st.info("No transactions found.")
  
-if __name__ == "__main__":
-    run()
+    elif choice == "Admin Block":
+        st.subheader("🔐 Admin Initialization Block")
+        password = st.text_input("Enter Admin Password", type="password")
+        if password == "Sekura@2025":
+            st.success("Access Granted")
+            toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"], key="admin_tp")
+            dg_name = st.selectbox("Select DG Name", ["DG1", "DG2"], key="admin_dg")
+ 
+            init_barrel_stock = st.number_input("Initialize Plaza Barrel Stock", min_value=0.0)
+            init_diesel_stock = st.number_input("Initialize Opening Diesel Stock at DG", min_value=0.0)
+            init_opening_kwh = st.number_input("Initialize Opening KWH", min_value=0.0)
+            init_opening_rh = st.text_input("Initialize Opening RH (HH:MM)", "00:00")
+ 
+            if st.button("Save Initialization"):
+                try:
+                    update_live_plaza_stock(toll_plaza, init_barrel_stock)
+                    update_opening_status(toll_plaza, dg_name, init_diesel_stock, init_opening_kwh, init_opening_rh)
+                    st.success("✅ Initialization data saved successfully.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Initialization failed: {e}")
+        else:
+            if password != "":
+                st.error("Incorrect password. Try again.")
+ 
+    elif choice == "Download CSV":
+        st.subheader("📥 Download DG Transactions as CSV")
+        from_date = st.date_input("From Date", datetime.now() - timedelta(days=7))
+        to_date = st.date_input("To Date", datetime.now())
+        if st.button("Download CSV"):
+            resp = supabase.table("dg_transactions").select("*").gte("date", str(from_date)).lte("date", str(to_date)).execute()
+            if resp.data:
+                df = pd.DataFrame(resp.data)
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button("📥 Download CSV", csv, "dg_transactions.csv", "text/csv")
+            else:
+                st.info("No data found for the selected period.")
  
