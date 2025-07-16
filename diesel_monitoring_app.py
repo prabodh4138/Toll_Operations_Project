@@ -181,4 +181,3 @@ def run():
                 st.download_button("📥 Download CSV", csv, "dg_transactions.csv", "text/csv")
             else:
                 st.info("No data found for the selected period.")
- 
