@@ -1,9 +1,9 @@
 import streamlit as st
  
 # Import your modular apps
-import diesel_monitoring_app
-import eb_meter_reading_app
-import highway_reading_app
+ import diesel_monitoring_app
+ import eb_meter_reading_app
+ import highway_reading_app
 # Future: import inventory_management_app
  
 def main():
