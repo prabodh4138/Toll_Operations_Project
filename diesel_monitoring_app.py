@@ -187,7 +187,7 @@ def run():
         st.error(f"❌ Submission failed: {resp}")
  
  
-    elif choice == "Last 10 Transactions":
+   elif choice == "Last 10 Transactions":
         st.header("📜 Last 10 Transactions")
         resp = supabase.table("dg_transactions").select("*").order("id", desc=True).limit(10).execute()
         if resp.data:
