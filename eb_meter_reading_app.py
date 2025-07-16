@@ -89,7 +89,7 @@ def run():
                 }).execute()
  
                 st.success("✅ Reading submitted successfully.")
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"❌ Submission failed: {e}")
  
