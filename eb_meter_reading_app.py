@@ -41,7 +41,7 @@ def run():
         st.info(f"Opening KWH: {opening_kwh}")
         st.info(f"Opening KVAH: {opening_kvah}")
  
-        date = st.date_input("Select Date", datetime.now()).strftime("%d-%m-%Y")
+        date = st.date_input("Select Date", datetime.now()).strftime("%y-%m-%d")
  
         closing_kwh = st.number_input("Closing KWH", min_value=opening_kwh, format="%.2f")
         net_kwh = closing_kwh - opening_kwh
@@ -116,7 +116,7 @@ def run():
                     "opening_kvah": opening_kvah
                 }).execute()
                 st.success("✅ Initialization saved successfully.")
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"❌ Initialization failed: {e}")
  
