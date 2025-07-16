@@ -28,20 +28,32 @@ def run():
         st.header("🛠️ User Block - Enter Readings")
  
         date_obj = st.date_input("Select Date", datetime.now())
-        date = date_obj.strftime("%Y-%m-%d")  # For Supabase
-        date_for_display = date_obj.strftime("%d-%m-%Y")  # For user display
+        date = date_obj.strftime("%Y-%m-%d")
+        date_for_display = date_obj.strftime("%d-%m-%Y")
         st.info(f"Selected Date: {date_for_display}")
  
         toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
         consumer_number = TP_CONSUMER_MAP.get(toll_plaza, "N/A")
         st.info(f"Auto Fetched Consumer Number: {consumer_number}")
  
-        opening_kwh = st.number_input("Opening KWH", min_value=0.0, format="%.2f")
+        # Fetch virtual, dynamic opening values from eb_live_status
+        opening_kwh = 0.0
+        opening_kvah = 0.0
+ 
+        try:
+            live_resp = supabase.table("eb_live_status").select("opening_kwh, opening_kvah").eq("toll_plaza", toll_plaza).execute()
+            if live_resp.data:
+                opening_kwh = live_resp.data[0].get("opening_kwh", 0.0)
+                opening_kvah = live_resp.data[0].get("opening_kvah", 0.0)
+        except Exception as e:
+            st.warning(f"Warning: {e}")
+ 
+        st.info(f"Opening KWH (Auto Fetched): {opening_kwh}")
         closing_kwh = st.number_input("Closing KWH", min_value=opening_kwh, format="%.2f")
         net_kwh = closing_kwh - opening_kwh
         st.success(f"Net KWH: {net_kwh:.2f}")
  
-        opening_kvah = st.number_input("Opening KVAH", min_value=0.0, format="%.2f")
+        st.info(f"Opening KVAH (Auto Fetched): {opening_kvah}")
         closing_kvah = st.number_input("Closing KVAH", min_value=opening_kvah, format="%.2f")
         net_kvah = closing_kvah - opening_kvah
         st.success(f"Net KVAH: {net_kvah:.2f}")
@@ -67,6 +79,15 @@ def run():
                     "remarks": remarks
                 }
                 supabase.table("eb_meter_readings").insert(data).execute()
+ 
+                # Update virtual opening values for next day (only if you want auto-forward)
+                supabase.table("eb_live_status").upsert({
+                    "toll_plaza": toll_plaza,
+                    "consumer_number": consumer_number,
+                    "opening_kwh": closing_kwh,
+                    "opening_kvah": closing_kvah
+                }).execute()
+ 
                 st.success("✅ Reading submitted successfully.")
                 st.experimental_rerun()
             except Exception as e:
@@ -107,7 +128,7 @@ def run():
                         "opening_kvah": opening_kvah
                     }).execute()
                     st.success("✅ Initialization saved and synced.")
-                    st.experimental_rerun()
+                    st.rerun()
                 except Exception as e:
                     st.error(f"❌ Initialization failed: {e}")
         else:
