@@ -129,7 +129,7 @@ def run():
                 update_opening_status(toll_plaza, dg_name, closing_diesel_stock, closing_kwh, closing_rh)
  
                 st.success("✅ Data submitted successfully.")
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"❌ Submission failed: {e}")
  
