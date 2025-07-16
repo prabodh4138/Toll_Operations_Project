@@ -9,7 +9,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
  
-# Helper: Parse RH hh:mm to minutes
+# Parse RH from hh:mm to total minutes
 def parse_rh(rh_str):
     try:
         parts = rh_str.strip().split(":")
@@ -23,7 +23,7 @@ def parse_rh(rh_str):
     except:
         return None
  
-# Helper: Convert minutes to hh:mm
+# Convert total minutes to hh:mm
 def minutes_to_rh(mins):
     hours = mins // 60
     minutes = mins % 60
@@ -70,11 +70,11 @@ def run():
             }
  
             resp = supabase.table("dg_opening_status").upsert(data).execute()
-            if not resp.data:
-                st.error("❌ Initialization failed.")
-            else:
+            if resp.data:
                 st.success("✅ Initialization saved.")
                 st.rerun()
+            else:
+                st.error("❌ Initialization failed.")
  
     elif choice == "User Entry":
         st.header("📝 User Entry")
@@ -82,7 +82,7 @@ def run():
         toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
         dg_name = st.selectbox("Select DG", ["DG1", "DG2"])
  
-        # Fetch dynamic opening values
+        # Fetch opening values
         open_resp = supabase.table("dg_opening_status").select("*").eq("toll_plaza", toll_plaza).eq("dg_name", dg_name).execute()
         if not open_resp.data:
             st.error("❌ Opening data not initialized for this DG and Plaza.")
@@ -99,22 +99,19 @@ def run():
  
         # Fetch plaza barrel stock
         live_resp = supabase.table("dg_live_status").select("*").eq("toll_plaza", toll_plaza).execute()
-        if live_resp.data:
-            updated_plaza_barrel_stock = live_resp.data[0].get("updated_plaza_barrel_stock", 0.0)
-        else:
-            updated_plaza_barrel_stock = 0.0
+        updated_plaza_barrel_stock = live_resp.data[0]['updated_plaza_barrel_stock'] if live_resp.data else 0.0
         st.info(f"🛢️ Plaza Barrel Stock: {updated_plaza_barrel_stock} L")
  
         diesel_purchase = st.number_input("Diesel Purchase (L)", min_value=0.0, value=0.0)
         diesel_topup = st.number_input("Diesel Topup (L)", min_value=0.0, value=0.0)
         closing_diesel_stock = st.number_input("Closing Diesel Stock (L)", min_value=0.0)
  
-        max_closing = opening_diesel_stock + diesel_topup
-        if closing_diesel_stock > max_closing:
-            st.error(f"❌ Closing stock cannot exceed Opening + Topup ({max_closing} L).")
+        max_closing_stock = opening_diesel_stock + diesel_topup
+        if closing_diesel_stock > max_closing_stock:
+            st.error(f"❌ Closing stock cannot exceed Opening + Topup ({max_closing_stock} L).")
             return
  
-        diesel_consumption = max_closing - closing_diesel_stock
+        diesel_consumption = max_closing_stock - closing_diesel_stock
         st.info(f"🔻 Diesel Consumption: {diesel_consumption} L (auto-calculated)")
  
         closing_kwh = st.number_input("Closing KWH", min_value=0.0)
@@ -122,14 +119,14 @@ def run():
         if net_kwh < 0:
             st.error("❌ Closing KWH must be ≥ Opening KWH.")
             return
-        st.info(f"⚡ Net KWH: {net_kwh}")
+        st.info(f"⚡ Net KWH: {net_kwh} (auto-calculated)")
  
         closing_rh = st.text_input("Closing RH (hh:mm)")
         net_rh, rh_error = calculate_net_rh(opening_rh, closing_rh)
         if rh_error:
             st.error(rh_error)
             return
-        st.info(f"⏱️ Net RH: {net_rh}")
+        st.info(f"⏱️ Net RH: {net_rh} (auto-calculated)")
  
         maximum_demand = st.number_input("Maximum Demand (kVA)", min_value=0.0)
         remarks = st.text_area("Remarks (optional)")
@@ -143,7 +140,7 @@ def run():
                 "dg_name": dg_name,
                 "diesel_purchase": diesel_purchase,
                 "diesel_topup": diesel_topup,
-                "updated_plaza_barrel_stock": max_closing,
+                "updated_plaza_barrel_stock": max_closing_stock,
                 "opening_diesel_stock": opening_diesel_stock,
                 "closing_diesel_stock": closing_diesel_stock,
                 "diesel_consumption": diesel_consumption,
@@ -154,14 +151,14 @@ def run():
                 "closing_rh": closing_rh,
                 "net_rh": net_rh,
                 "maximum_demand": maximum_demand,
-                "remarks": remarks,
+                "remarks": remarks
             }
  
-            insert_resp = supabase.table("dg_transactions").insert(data).execute()
-            if insert_resp.data:
+            resp = supabase.table("dg_transactions").insert(data).execute()
+            if resp.data:
                 supabase.table("dg_live_status").upsert({
                     "toll_plaza": toll_plaza,
-                    "updated_plaza_barrel_stock": max_closing
+                    "updated_plaza_barrel_stock": max_closing_stock
                 }).execute()
                 st.success("✅ Entry submitted successfully.")
                 st.rerun()
