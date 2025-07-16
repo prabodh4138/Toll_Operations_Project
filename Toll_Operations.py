@@ -1,5 +1,5 @@
 import streamlit as st
-import diesel_monitoring_app 
+import diesel_monitoring_app
 def main():
     st.title("🛣️ Toll Plaza Operations")
  
@@ -21,5 +21,5 @@ def main():
     #     highway_reading_app.run()
  
 if __name__ == "__main__":
-     main()
+      main()
  
