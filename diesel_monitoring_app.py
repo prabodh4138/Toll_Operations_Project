@@ -4,11 +4,12 @@ from datetime import datetime
 import pandas as pd
 import os
  
+# Initialize Supabase client
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
  
-# RH utilities
+# RH Utilities
 def parse_rh(rh_str):
     try:
         parts = rh_str.strip().split(":")
@@ -75,11 +76,12 @@ def run():
         toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
         dg_name = st.selectbox("Select DG", ["DG1", "DG2"])
  
-        # Fetch previous opening
+        # Fetch Opening Parameters
         open_resp = supabase.table("dg_opening_status").select("*").eq("toll_plaza", toll_plaza).eq("dg_name", dg_name).execute()
         if not open_resp.data:
             st.error("❌ Opening data not initialized for this DG and Plaza.")
             return
+ 
         open_data = open_resp.data[0]
         opening_diesel_stock = open_data.get("opening_diesel_stock", 0.0)
         opening_kwh = open_data.get("opening_kwh", 0.0)
@@ -89,18 +91,17 @@ def run():
         st.info(f"🔹 Opening KWH: {opening_kwh}")
         st.info(f"🔹 Opening RH: {opening_rh}")
  
-        # Fetch plaza barrel stock
+        # Fetch Current Plaza Barrel Stock
         live_resp = supabase.table("dg_live_status").select("*").eq("toll_plaza", toll_plaza).execute()
         current_barrel_stock = live_resp.data[0]['updated_plaza_barrel_stock'] if live_resp.data else 0.0
-        st.info(f"🛢️ Plaza Barrel Stock: {current_barrel_stock} L")
+        st.info(f"🛢️ Current Plaza Barrel Stock: {current_barrel_stock} L")
  
         # User Inputs
         diesel_purchase = st.number_input("Diesel Purchase (L)", min_value=0.0, value=0.0)
         diesel_topup = st.number_input("Diesel Topup to DG (L)", min_value=0.0, value=0.0)
  
-        # Update barrel stock logic
         updated_barrel_stock = current_barrel_stock + diesel_purchase - diesel_topup
-        st.info(f"🛢️ Updated Plaza Barrel Stock after this transaction: {updated_barrel_stock} L")
+        st.info(f"🛢️ Updated Plaza Barrel Stock after transaction: {updated_barrel_stock} L")
  
         closing_diesel_stock = st.number_input("Closing Diesel Stock (L)", min_value=0.0)
         max_closing_stock = opening_diesel_stock + diesel_topup
@@ -109,21 +110,21 @@ def run():
             return
  
         diesel_consumption = max_closing_stock - closing_diesel_stock
-        st.info(f"🔻 Diesel Consumption: {diesel_consumption} L (auto-calculated)")
+        st.info(f"🔻 Diesel Consumption: {diesel_consumption} L")
  
         closing_kwh = st.number_input("Closing KWH", min_value=0.0)
-        net_kwh = closing_kwh - opening_kwh
-        if net_kwh < 0:
+        if closing_kwh < opening_kwh:
             st.error("❌ Closing KWH must be ≥ Opening KWH.")
             return
-        st.info(f"⚡ Net KWH: {net_kwh} (auto-calculated)")
+        net_kwh = closing_kwh - opening_kwh
+        st.info(f"⚡ Net KWH: {net_kwh}")
  
         closing_rh = st.text_input("Closing RH (hh:mm)")
         net_rh, rh_error = calculate_net_rh(opening_rh, closing_rh)
         if rh_error:
             st.error(rh_error)
             return
-        st.info(f"⏱️ Net RH: {net_rh} (auto-calculated)")
+        st.info(f"⏱️ Net RH: {net_rh}")
  
         maximum_demand = st.number_input("Maximum Demand (kVA)", min_value=0.0)
         remarks = st.text_area("Remarks (optional)")
@@ -153,13 +154,13 @@ def run():
  
             resp = supabase.table("dg_transactions").insert(data).execute()
             if resp.data:
-                # Update dg_live_status
+                # Update dg_live_status for barrel stock
                 supabase.table("dg_live_status").upsert({
                     "toll_plaza": toll_plaza,
                     "updated_plaza_barrel_stock": updated_barrel_stock
                 }).execute()
  
-                # Auto-shift closing to opening for next
+                # Auto-update opening parameters to closing parameters for next cycle
                 supabase.table("dg_opening_status").upsert({
                     "toll_plaza": toll_plaza,
                     "dg_name": dg_name,
@@ -168,7 +169,7 @@ def run():
                     "opening_rh": closing_rh
                 }).execute()
  
-                st.success("✅ Entry submitted successfully and opening parameters updated for next entry.")
+                st.success("✅ Entry submitted and opening parameters updated for next entry.")
                 st.rerun()
             else:
                 st.error("❌ Submission failed.")
