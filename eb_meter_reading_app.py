@@ -2,51 +2,62 @@ import streamlit as st
 from supabase import create_client
 import pandas as pd
 from datetime import datetime
- 
-# --- Supabase connection ---
 import os
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+ 
+# ----------------- Supabase Connection -----------------
+supabase_url = os.environ.get("SUPABASE_URL")
+supabase_key = os.environ.get("SUPABASE_KEY")
+supabase = create_client(supabase_url, supabase_key)
+ 
+# ----------------- Consumer Mapping -----------------
+CONSUMER_MAP = {
+    "TP01": "416000000110",
+    "TP02": "812001020208",
+    "TP03": "813000000281"
+}
  
 def run():
-    st.title("💡 EB Meter Reading - Toll Operations")
+    st.title("⚡ EB Meter Reading Module")
  
     menu = ["User Block", "Last 10 Records", "Admin Block", "Download CSV"]
     choice = st.sidebar.selectbox("Select Block", menu)
  
-    # Predefined mapping
-    plaza_consumer_map = {
-        "TP01": "416000000110",
-        "TP02": "812001020208",
-        "TP03": "813000000281"
-    }
- 
     if choice == "User Block":
-        st.subheader("📥 User Entry")
+        st.subheader("📄 EB Meter Reading Entry")
  
         toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
-        consumer_number = plaza_consumer_map.get(toll_plaza, "")
  
-        st.info(f"Auto-fetched Consumer Number: **{consumer_number}**")
+        # Fetch live values
+        live_resp = supabase.table("eb_live_status").select("*").eq("toll_plaza", toll_plaza).execute()
+        if live_resp.data:
+            consumer_number = live_resp.data[0]["consumer_number"]
+            opening_kwh = live_resp.data[0]["opening_kwh"]
+            opening_kvah = live_resp.data[0]["opening_kvah"]
+        else:
+            st.warning("Admin has not initialized data for this Toll Plaza yet.")
+            st.stop()
+ 
+        st.info(f"Consumer Number (Auto): {consumer_number}")
+        st.info(f"Opening KWH: {opening_kwh}")
+        st.info(f"Opening KVAH: {opening_kvah}")
  
         date = st.date_input("Select Date", datetime.now()).strftime("%d-%m-%Y")
-        opening_kwh = st.number_input("Opening KWH", min_value=0.0, format="%.2f")
+ 
         closing_kwh = st.number_input("Closing KWH", min_value=opening_kwh, format="%.2f")
         net_kwh = closing_kwh - opening_kwh
         st.success(f"Net KWH: {net_kwh:.2f}")
  
-        opening_kvah = st.number_input("Opening KVAH", min_value=0.0, format="%.2f")
         closing_kvah = st.number_input("Closing KVAH", min_value=opening_kvah, format="%.2f")
         net_kvah = closing_kvah - opening_kvah
         st.success(f"Net KVAH: {net_kvah:.2f}")
  
         maximum_demand = st.number_input("Maximum Demand (kVA)", min_value=0.0, format="%.2f")
-        remarks = st.text_area("Remarks (Optional)")
+        remarks = st.text_area("Remarks (optional)")
  
         if st.button("Submit Reading"):
             try:
-                data = {
+                # Insert into transactions
+                supabase.table("eb_meter_readings").insert({
                     "date": date,
                     "toll_plaza": toll_plaza,
                     "consumer_number": consumer_number,
@@ -58,67 +69,64 @@ def run():
                     "net_kvah": net_kvah,
                     "maximum_demand": maximum_demand,
                     "remarks": remarks
-                }
-                supabase.table("eb_meter_readings").insert(data).execute()
-                st.success("✅ Reading submitted successfully.")
+                }).execute()
+ 
+                # Update live_status
+                supabase.table("eb_live_status").update({
+                    "opening_kwh": closing_kwh,
+                    "opening_kvah": closing_kvah
+                }).eq("toll_plaza", toll_plaza).execute()
+ 
+                st.success("✅ Data submitted and live values updated.")
                 st.experimental_rerun()
             except Exception as e:
                 st.error(f"❌ Submission failed: {e}")
  
     elif choice == "Last 10 Records":
-        st.subheader("🗂️ Last 10 EB Meter Readings")
-        toll_plaza = st.selectbox("Filter by Toll Plaza", ["TP01", "TP02", "TP03"])
-        consumer_number = plaza_consumer_map.get(toll_plaza, "")
-        try:
-            resp = supabase.table("eb_meter_readings").select("*").eq("toll_plaza", toll_plaza).eq("consumer_number", consumer_number).order("id", desc=True).limit(10).execute()
+        st.subheader("📝 Last 10 EB Meter Records")
+        toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
+        resp = supabase.table("eb_meter_readings").select("*").eq("toll_plaza", toll_plaza).order("id", desc=True).limit(10).execute()
+        if resp.data:
             df = pd.DataFrame(resp.data)
-            if not df.empty:
-                st.dataframe(df)
-            else:
-                st.info("No data found for this Toll Plaza.")
-        except Exception as e:
-            st.error(f"❌ Fetching data failed: {e}")
+            st.dataframe(df)
+        else:
+            st.info("No data found.")
  
     elif choice == "Admin Block":
-        st.subheader("🔐 Admin Initialization Block")
+        st.subheader("🔑 Admin Initialization")
+ 
         password = st.text_input("Enter Admin Password", type="password")
-        if password == "Sekura@2025":
-            st.success("Access Granted.")
+        if password != "Sekura@2025":
+            st.warning("Please enter correct admin password to proceed.")
+            st.stop()
  
-            toll_plaza = st.selectbox("Select Toll Plaza for Initialization", ["TP01", "TP02", "TP03"])
-            consumer_number = plaza_consumer_map.get(toll_plaza, "")
-            st.info(f"Auto-fetched Consumer Number: **{consumer_number}**")
+        toll_plaza = st.selectbox("Select Toll Plaza to Initialize", ["TP01", "TP02", "TP03"])
+        consumer_number = CONSUMER_MAP.get(toll_plaza, "NA")
+        st.info(f"Consumer Number Auto-Set: {consumer_number}")
  
-            init_opening_kwh = st.number_input("Initialize Opening KWH", min_value=0.0, format="%.2f")
-            init_opening_kvah = st.number_input("Initialize Opening KVAH", min_value=0.0, format="%.2f")
+        opening_kwh = st.number_input("Initialize Opening KWH", min_value=0.0, format="%.2f")
+        opening_kvah = st.number_input("Initialize Opening KVAH", min_value=0.0, format="%.2f")
  
-            if st.button("Save Initialization"):
-                try:
-                    # Upsert to eb_live_status table
-                    data = {
-                        "toll_plaza": toll_plaza,
-                        "consumer_number": consumer_number,
-                        "opening_kwh": init_opening_kwh,
-                        "opening_kvah": init_opening_kvah
-                    }
-                    supabase.table("eb_live_status").upsert(data, on_conflict=["toll_plaza"]).execute()
-                    st.success("✅ Initialization saved successfully.")
-                    st.experimental_rerun()
-                except Exception as e:
-                    st.error(f"❌ Initialization failed: {e}")
-        elif password != "":
-            st.error("❌ Incorrect password.")
+        if st.button("Save Initialization"):
+            try:
+                supabase.table("eb_live_status").upsert({
+                    "toll_plaza": toll_plaza,
+                    "consumer_number": consumer_number,
+                    "opening_kwh": opening_kwh,
+                    "opening_kvah": opening_kvah
+                }).execute()
+                st.success("✅ Initialization saved successfully.")
+                st.experimental_rerun()
+            except Exception as e:
+                st.error(f"❌ Initialization failed: {e}")
  
     elif choice == "Download CSV":
-        st.subheader("📥 Download EB Meter Reading Data")
-        try:
-            resp = supabase.table("eb_meter_readings").select("*").execute()
+        st.subheader("📥 Download EB Meter Data CSV")
+        resp = supabase.table("eb_meter_readings").select("*").execute()
+        if resp.data:
             df = pd.DataFrame(resp.data)
-            if not df.empty:
-                csv = df.to_csv(index=False).encode("utf-8")
-                st.download_button("Download CSV", csv, "eb_meter_readings.csv", "text/csv")
-            else:
-                st.info("No data available to download.")
-        except Exception as e:
-            st.error(f"❌ Download failed: {e}")
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button("Download CSV", csv, "eb_meter_readings.csv", "text/csv")
+        else:
+            st.info("No data found to download.")
  
