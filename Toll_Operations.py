@@ -17,9 +17,9 @@ def main():
     if module == "DG Monitoring":
         diesel_monitoring_app.run()
  
-    # elif module == "EB Meter Reading (Coming Soon)":
-    #     import eb_meter_reading_app
-    #     eb_meter_reading_app.run()
+    elif module == "EB Meter Reading (Coming Soon)":
+         import eb_meter_reading_app
+         eb_meter_reading_app.run()
  
     # elif module == "Highway Meter Reading (Coming Soon)":
     #     import highway_reading_app
