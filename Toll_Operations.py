@@ -1,5 +1,6 @@
 import streamlit as st
 import diesel_monitoring_app
+import eb_meter_reading_app
  
 def main():
     st.title("🛣️ Toll Plaza Operations")
