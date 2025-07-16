@@ -4,138 +4,156 @@ from datetime import datetime
 import pandas as pd
 import os
  
-# Supabase setup
+# ------------------ Supabase Connection ------------------
 url = os.environ.get("SUPABASE_URL")
 key = os.environ.get("SUPABASE_KEY")
 supabase = create_client(url, key)
  
+# ------------------ Main Function ------------------
 def run():
-    st.title("🚦 Highway Energy Meter Reading")
+    st.title("🛣️ Highway Energy Meter Reading")
  
-    menu = ["User Block", "Admin Block", "Last 10 Transactions", "Download CSV"]
+    menu = ["User Block", "Last 10 Readings", "Admin Block", "Download CSV"]
     choice = st.sidebar.selectbox("Select Block", menu)
  
+    # ------------------ User Block ------------------
     if choice == "User Block":
-        st.header("📥 User Block - Enter Readings")
-        toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
-        
-        # Fetch consumer numbers for the selected plaza
-        consumers = supabase.table("highway_consumers").select("*").eq("toll_plaza", toll_plaza).execute().data
-        if consumers:
-            consumer_numbers = [c["consumer_number"] for c in consumers]
-            consumer_number = st.selectbox("Select Consumer Number", consumer_numbers)
+        st.header("🛠️ User Block - Enter Highway Readings")
  
-            # Fetch live opening values
-            live = supabase.table("highway_live_status").select("*").eq("toll_plaza", toll_plaza).eq("consumer_number", consumer_number).execute().data
-            if live:
-                opening_kwh = live[0]["opening_kwh"]
-                opening_kvah = live[0]["opening_kvah"]
+        date_obj = st.date_input("Select Date", datetime.now())
+        display_date = date_obj.strftime("%d-%m-%Y")
+        iso_date = date_obj.strftime("%Y-%m-%d")
+        st.info(f"Selected Date: {display_date}")
+ 
+        toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
+ 
+        # Fetch consumers under this plaza
+        consumer_resp = supabase.table("highway_consumers").select("consumer_number").eq("toll_plaza", toll_plaza).execute()
+        consumer_list = [c["consumer_number"] for c in consumer_resp.data] if consumer_resp.data else []
+ 
+        if not consumer_list:
+            st.warning("No consumers found for this Toll Plaza. Please ask Admin to initialize.")
+            return
+ 
+        consumer_number = st.selectbox("Select Consumer Number", consumer_list)
+ 
+        # Fetch live opening values
+        opening_kwh, opening_kvah = 0.0, 0.0
+        try:
+            live_resp = supabase.table("highway_live_status").select("opening_kwh, opening_kvah").eq("toll_plaza", toll_plaza).eq("consumer_number", consumer_number).execute()
+            if live_resp.data:
+                opening_kwh = live_resp.data[0].get("opening_kwh", 0.0)
+                opening_kvah = live_resp.data[0].get("opening_kvah", 0.0)
+        except Exception as e:
+            st.warning(f"Error fetching live data: {e}")
+ 
+        st.info(f"Opening KWH: {opening_kwh}")
+        closing_kwh = st.number_input("Closing KWH", min_value=opening_kwh, format="%.2f")
+        net_kwh = closing_kwh - opening_kwh
+        st.success(f"Net KWH: {net_kwh:.2f}")
+ 
+        st.info(f"Opening KVAH: {opening_kvah}")
+        closing_kvah = st.number_input("Closing KVAH", min_value=opening_kvah, format="%.2f")
+        net_kvah = closing_kvah - opening_kvah
+        st.success(f"Net KVAH: {net_kvah:.2f}")
+ 
+        pf = st.number_input("Power Factor (PF)", min_value=0.0, max_value=1.0, step=0.01, format="%.2f")
+        md = st.number_input("Maximum Demand (MD in kVA)", min_value=0.0, step=0.1, format="%.2f")
+        remarks = st.text_area("Remarks (optional)")
+ 
+        if st.button("Submit Reading"):
+            try:
+                data = {
+                    "date": iso_date,
+                    "toll_plaza": toll_plaza,
+                    "consumer_number": consumer_number,
+                    "opening_kwh": opening_kwh,
+                    "closing_kwh": closing_kwh,
+                    "net_kwh": net_kwh,
+                    "opening_kvah": opening_kvah,
+                    "closing_kvah": closing_kvah,
+                    "net_kvah": net_kvah,
+                    "pf": pf,
+                    "md": md,
+                    "remarks": remarks
+                }
+                supabase.table("highway_meter_readings").insert(data).execute()
+ 
+                # Update live status for the next cycle
+                supabase.table("highway_live_status").upsert({
+                    "toll_plaza": toll_plaza,
+                    "consumer_number": consumer_number,
+                    "opening_kwh": closing_kwh,
+                    "opening_kvah": closing_kvah
+                }).execute()
+ 
+                st.success("✅ Reading submitted successfully.")
+                st.experimental_rerun()
+            except Exception as e:
+                st.error(f"❌ Submission failed: {e}")
+ 
+    # ------------------ Last 10 Readings ------------------
+    elif choice == "Last 10 Readings":
+        st.header("📊 Last 10 Highway Meter Readings")
+        try:
+            readings_resp = supabase.table("highway_meter_readings").select("*").order("id", desc=True).limit(10).execute()
+            if readings_resp.data:
+                df = pd.DataFrame(readings_resp.data)
+                st.dataframe(df)
             else:
-                opening_kwh = 0.0
-                opening_kvah = 0.0
+                st.info("No readings found.")
+        except Exception as e:
+            st.error(f"Error fetching data: {e}")
  
-            st.info(f"Opening KWH: {opening_kwh}")
-            st.info(f"Opening KVAH: {opening_kvah}")
- 
-            date = st.date_input("Select Date", datetime.now()).strftime("%d-%m-%Y")
-            closing_kwh = st.number_input("Closing KWH", min_value=opening_kwh, value=opening_kwh)
-            closing_kvah = st.number_input("Closing KVAH", min_value=opening_kvah, value=opening_kvah)
-            pf = st.number_input("Power Factor (0-1)", min_value=0.0, max_value=1.0, step=0.01)
-            md = st.number_input("Maximum Demand (kVA)", min_value=0.0)
-            remarks = st.text_area("Remarks (optional)")
- 
-            net_kwh = closing_kwh - opening_kwh
-            net_kvah = closing_kvah - opening_kvah
-            st.success(f"Net KWH: {net_kwh}")
-            st.success(f"Net KVAH: {net_kvah}")
- 
-            if st.button("Submit Entry"):
-                try:
-                    supabase.table("highway_meter_readings").insert({
-                        "date": date,
-                        "toll_plaza": toll_plaza,
-                        "consumer_number": consumer_number,
-                        "opening_kwh": opening_kwh,
-                        "closing_kwh": closing_kwh,
-                        "net_kwh": net_kwh,
-                        "opening_kvah": opening_kvah,
-                        "closing_kvah": closing_kvah,
-                        "net_kvah": net_kvah,
-                        "pf": pf,
-                        "md": md,
-                        "remarks": remarks
-                    }).execute()
- 
-                    # Update live status
-                    supabase.table("highway_live_status").upsert({
-                        "toll_plaza": toll_plaza,
-                        "consumer_number": consumer_number,
-                        "opening_kwh": closing_kwh,
-                        "opening_kvah": closing_kvah
-                    }).execute()
- 
-                    st.success("✅ Data submitted and live values updated.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"❌ Submission failed: {e}")
- 
-        else:
-            st.warning("No consumer numbers initialized for this Toll Plaza. Contact admin.")
- 
+    # ------------------ Admin Block ------------------
     elif choice == "Admin Block":
-        st.header("🔐 Admin Block - Initialize Consumer & Values")
-        password = st.text_input("Enter Admin Password", type="password")
-        if password == "Sekura@2025":
-            st.success("Access Granted.")
-            toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
-            consumer_number = st.text_input("Enter Consumer Number")
+        st.header("🛠️ Admin Block - Add Consumer")
  
-            init_kwh = st.number_input("Initialize Opening KWH", min_value=0.0)
-            init_kvah = st.number_input("Initialize Opening KVAH", min_value=0.0)
+        toll_plaza = st.selectbox("Select Toll Plaza to Add Consumer", ["TP01", "TP02", "TP03"])
+        consumer_number = st.text_input("Enter Consumer Number")
+        opening_kwh = st.number_input("Initial Opening KWH", min_value=0.0, format="%.2f")
+        opening_kvah = st.number_input("Initial Opening KVAH", min_value=0.0, format="%.2f")
  
-            if st.button("Save Initialization"):
-                try:
-                    # Add consumer if not exists
-                    supabase.table("highway_consumers").upsert({
-                        "toll_plaza": toll_plaza,
-                        "consumer_number": consumer_number
-                    }).execute()
+        if st.button("Add Consumer"):
+            try:
+                # Add to consumers
+                supabase.table("highway_consumers").insert({
+                    "toll_plaza": toll_plaza,
+                    "consumer_number": consumer_number,
+                    "opening_kwh": opening_kwh,
+                    "opening_kvah": opening_kvah
+                }).execute()
  
-                    # Initialize live status
-                    supabase.table("highway_live_status").upsert({
-                        "toll_plaza": toll_plaza,
-                        "consumer_number": consumer_number,
-                        "opening_kwh": init_kwh,
-                        "opening_kvah": init_kvah
-                    }).execute()
+                # Add to live status
+                supabase.table("highway_live_status").upsert({
+                    "toll_plaza": toll_plaza,
+                    "consumer_number": consumer_number,
+                    "opening_kwh": opening_kwh,
+                    "opening_kvah": opening_kvah
+                }).execute()
  
-                    st.success("✅ Initialization saved.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"❌ Failed to initialize: {e}")
-        else:
-            if password != "":
-                st.error("Incorrect password.")
+                st.success("✅ Consumer added and initialized successfully.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Initialization failed: {e}")
  
-    elif choice == "Last 10 Transactions":
-        st.header("📄 Last 10 Transactions")
-        toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
-        consumer_number = st.text_input("Enter Consumer Number to Filter (Optional)", "")
-        query = supabase.table("highway_meter_readings").select("*").eq("toll_plaza", toll_plaza)
-        if consumer_number:
-            query = query.eq("consumer_number", consumer_number)
-        data = query.order("id", desc=True).limit(10).execute().data
-        df = pd.DataFrame(data)
-        st.dataframe(df)
- 
+    # ------------------ Download CSV ------------------
     elif choice == "Download CSV":
-        st.header("📥 Download CSV Records")
-        toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
-        from_date = st.date_input("From Date")
-        to_date = st.date_input("To Date")
-        if st.button("Download CSV"):
-            data = supabase.table("highway_meter_readings").select("*").eq("toll_plaza", toll_plaza).execute().data
-            df = pd.DataFrame(data)
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download CSV", csv, "highway_meter_readings.csv", "text/csv")
+        st.header("⬇️ Download Highway Meter Readings")
+ 
+        try:
+            data_resp = supabase.table("highway_meter_readings").select("*").execute()
+            if data_resp.data:
+                df = pd.DataFrame(data_resp.data)
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="Download CSV",
+                    data=csv,
+                    file_name=f'highway_meter_readings_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv',
+                    mime='text/csv',
+                )
+            else:
+                st.info("No data available for download.")
+        except Exception as e:
+            st.error(f"Error downloading data: {e}")
  
