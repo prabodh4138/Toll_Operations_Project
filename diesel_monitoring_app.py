@@ -56,7 +56,6 @@ def run():
             if parse_rh(opening_rh) is None:
                 st.error("❌ Invalid RH format. Use hh:mm.")
                 return
- 
             data = {
                 "toll_plaza": toll_plaza,
                 "dg_name": dg_name,
@@ -73,8 +72,12 @@ def run():
  
     elif choice == "User Entry":
         st.header("📝 User Entry")
+ 
         toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
         dg_name = st.selectbox("Select DG", ["DG1", "DG2"])
+ 
+        # 🚩 New: Date Picker
+        date = st.date_input("Select Entry Date", value=datetime.now()).strftime("%Y-%m-%d")
  
         # Fetch Opening Parameters
         open_resp = supabase.table("dg_opening_status").select("*").eq("toll_plaza", toll_plaza).eq("dg_name", dg_name).execute()
@@ -105,6 +108,7 @@ def run():
  
         closing_diesel_stock = st.number_input("Closing Diesel Stock (L)", min_value=0.0)
         max_closing_stock = opening_diesel_stock + diesel_topup
+ 
         if closing_diesel_stock > max_closing_stock:
             st.error(f"❌ Closing Diesel Stock cannot exceed Opening + Topup ({max_closing_stock} L).")
             return
@@ -116,6 +120,7 @@ def run():
         if closing_kwh < opening_kwh:
             st.error("❌ Closing KWH must be ≥ Opening KWH.")
             return
+ 
         net_kwh = closing_kwh - opening_kwh
         st.info(f"⚡ Net KWH: {net_kwh}")
  
@@ -128,8 +133,6 @@ def run():
  
         maximum_demand = st.number_input("Maximum Demand (kVA)", min_value=0.0)
         remarks = st.text_area("Remarks (optional)")
- 
-        date = datetime.now().strftime("%Y-%m-%d")
  
         if st.button("Submit Entry"):
             data = {
@@ -151,16 +154,12 @@ def run():
                 "maximum_demand": maximum_demand,
                 "remarks": remarks
             }
- 
             resp = supabase.table("dg_transactions").insert(data).execute()
             if resp.data:
-                # Update dg_live_status for barrel stock
                 supabase.table("dg_live_status").upsert({
                     "toll_plaza": toll_plaza,
                     "updated_plaza_barrel_stock": updated_barrel_stock
                 }).execute()
- 
-                # Auto-update opening parameters to closing parameters for next cycle
                 supabase.table("dg_opening_status").upsert({
                     "toll_plaza": toll_plaza,
                     "dg_name": dg_name,
@@ -168,7 +167,6 @@ def run():
                     "opening_kwh": closing_kwh,
                     "opening_rh": closing_rh
                 }).execute()
- 
                 st.success("✅ Entry submitted and opening parameters updated for next entry.")
                 st.rerun()
             else:
@@ -176,14 +174,15 @@ def run():
  
     elif choice == "Last 10 Transactions":
         st.header("📜 Last 10 Transactions")
-        resp = supabase.table("dg_transactions").select("*").order("id", desc=True).limit(10).execute()
+        toll_plaza = st.selectbox("Select Toll Plaza to View Transactions", ["TP01", "TP02", "TP03"])
+        resp = supabase.table("dg_transactions").select("*").eq("toll_plaza", toll_plaza).order("id", desc=True).limit(10).execute()
         if resp.data:
             df = pd.DataFrame(resp.data)
             st.dataframe(df)
             csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Download CSV", data=csv, file_name="dg_transactions_last10.csv", mime="text/csv")
+            st.download_button("📥 Download CSV", data=csv, file_name=f"{toll_plaza}_dg_transactions_last10.csv", mime="text/csv")
         else:
-            st.info("No transactions found.")
+            st.info("No transactions found for this Toll Plaza.")
  
 if __name__ == "__main__":
     run()
