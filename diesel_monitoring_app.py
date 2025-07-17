@@ -73,10 +73,12 @@ def run():
  
     elif choice == "User Entry":
         st.header("📝 User Entry")
+ 
+        # Date Picker displayed FIRST
+        date = st.date_input("Select Entry Date", value=datetime.now()).strftime("%Y-%m-%d")
+ 
         toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
         dg_name = st.selectbox("Select DG", ["DG1", "DG2"])
- 
-        date = st.date_input("Select Entry Date", value=datetime.now()).strftime("%Y-%m-%d")
  
         # Fetch Opening Parameters
         open_resp = supabase.table("dg_opening_status").select("*").eq("toll_plaza", toll_plaza).eq("dg_name", dg_name).execute()
@@ -153,11 +155,13 @@ def run():
  
             resp = supabase.table("dg_transactions").insert(data).execute()
             if resp.data:
+                # Update dg_live_status for barrel stock
                 supabase.table("dg_live_status").upsert({
                     "toll_plaza": toll_plaza,
                     "updated_plaza_barrel_stock": updated_barrel_stock
                 }).execute()
  
+                # Auto-update opening parameters to closing parameters for next cycle
                 supabase.table("dg_opening_status").upsert({
                     "toll_plaza": toll_plaza,
                     "dg_name": dg_name,
