@@ -112,7 +112,7 @@ def run():
                     "material_name": material_name,
                     "transaction_type": transaction_type,
                     "quantity": quantity,
-                    "souce_type": source_type,
+                    "source_type": source_type,
                     "material_consumption": material_consumption,
                     "updated_available_stock": updated_stock,
                     "remarks": remarks,
