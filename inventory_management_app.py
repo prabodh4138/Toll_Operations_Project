@@ -108,6 +108,7 @@ def run():
  
                 record = {
                     "date": date.strftime("%Y-%m-%d"),
+                    "toll_plaza": toll_plaza,
                     "material_code": material_code,
                     "material_name": material_name,
                     "transaction_type": transaction_type,
