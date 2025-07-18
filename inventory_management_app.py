@@ -31,7 +31,7 @@ def run():
             st.success("✅ Stock data uploaded/updated successfully.")
             st.dataframe(df)
  
-    elif choice == "User Block":
+        elif choice == "User Block":
         st.header("📝 User Entry")
  
 date = st.date_input("Select Date", value=datetime.today())
