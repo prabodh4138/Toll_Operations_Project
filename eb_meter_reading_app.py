@@ -1,3 +1,4 @@
+# eb_meter_reading_app.py
 import os
 from datetime import datetime, timedelta
 import streamlit as st
@@ -5,27 +6,38 @@ import pandas as pd
 from supabase import create_client
  
 # ---------- Supabase ----------
-URL = os.environ.get("SUPABASE_URL")
-KEY = os.environ.get("SUPABASE_KEY")
-if not URL or not KEY:
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+if not SUPABASE_URL or not SUPABASE_KEY:
     st.error("❌ Missing SUPABASE_URL or SUPABASE_KEY"); st.stop()
  
 @st.cache_resource
 def supabase_client():
-    return create_client(URL, KEY)
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 sb = supabase_client()
  
-# ---------- Helpers ----------
-TP_CONSUMER_MAP = {"TP01":"416000000110","TP02":"812001020208","TP03":"813000000281"}
+# ---------- Config ----------
+TP_CONSUMER_MAP = {
+    "TP01": "416000000110",
+    "TP02": "812001020208",
+    "TP03": "813000000281",
+}
+PLAZAS = list(TP_CONSUMER_MAP.keys())
  
-def to_float(s, name):
+# ---------- Helpers ----------
+def to_float(s: str, field_name: str):
     s = (s or "").strip()
-    if s == "": return 0.0, None
-    try: return float(s), None
-    except: return None, f"❌ {name}: please enter a number."
+    if s == "":
+        return 0.0, None
+    try:
+        return float(s), None
+    except Exception:
+        return None, f"❌ {field_name}: please enter a number."
  
 def fetch_openings(plaza: str):
-    r = sb.table("eb_live_status").select("opening_kwh, opening_kvah").eq("toll_plaza", plaza).single().execute()
+    """Opening KWH/KVAH from eb_live_status."""
+    r = sb.table("eb_live_status").select("opening_kwh, opening_kvah")\
+        .eq("toll_plaza", plaza).single().execute()
     return {"data": r.data, "error": getattr(r, "error", None)}
  
 def insert_reading(payload: dict):
@@ -33,12 +45,20 @@ def insert_reading(payload: dict):
  
 def upsert_live(plaza: str, consumer: str, opening_kwh: float, opening_kvah: float):
     return sb.table("eb_live_status").upsert({
-        "toll_plaza": plaza, "consumer_number": consumer,
-        "opening_kwh": opening_kwh, "opening_kvah": opening_kvah
+        "toll_plaza": plaza,
+        "consumer_number": consumer,
+        "opening_kwh": opening_kwh,
+        "opening_kvah": opening_kvah
     }).execute()
  
-def ensure_ctx_seed(ctx_key, *, open_kwh, open_kvah):
-    """Seed inputs once per (plaza:date) context so typing never gets overwritten."""
+# Reset state when plaza changes
+def _on_plaza_change():
+    st.session_state.pop("eb_ctx", None)
+    for k in ["closing_kwh_txt","closing_kvah_txt","pf_txt","md_txt","solar_txt"]:
+        st.session_state.pop(k, None)
+ 
+# Seed inputs once per (plaza:date) context
+def ensure_ctx_seed(ctx_key: str, open_kwh: float, open_kvah: float):
     if st.session_state.get("eb_ctx") != ctx_key:
         st.session_state["eb_ctx"] = ctx_key
         st.session_state["closing_kwh_txt"]  = f"{open_kwh:.2f}"
@@ -47,9 +67,12 @@ def ensure_ctx_seed(ctx_key, *, open_kwh, open_kvah):
         st.session_state["md_txt"]           = ""
         st.session_state["solar_txt"]        = ""
  
+# ---------- App ----------
 def run():
     st.title("⚡ EB Meter Reading - Toll Operations")
-    choice = st.sidebar.selectbox("Select Block", ["User Block","Last 10 Readings","Admin Block","Download CSV"])
+ 
+    menu = ["User Block", "Last 10 Readings", "Admin Block", "Download CSV"]
+    choice = st.sidebar.selectbox("Select Block", menu)
  
     # ============== USER BLOCK ==============
     if choice == "User Block":
@@ -57,76 +80,92 @@ def run():
  
         with st.form("eb_form", clear_on_submit=False):
             date_obj = st.date_input("Select Date", datetime.now())
-            date     = date_obj.strftime("%Y-%m-%d")
-            st.info(f"Selected Date: {date_obj.strftime('%d-%m-%Y')}")
+            date_str = date_obj.strftime("%Y-%m-%d")
+st.info(f"Selected Date: {date_obj.strftime('%d-%m-%Y')}")
  
-            toll_plaza = st.selectbox("Select Toll Plaza", ["TP01","TP02","TP03"], key="eb_plaza")
-            consumer   = TP_CONSUMER_MAP.get(toll_plaza, "N/A")
-            st.info(f"Auto Fetched Consumer Number: {consumer}")
+            toll_plaza = st.selectbox(
+                "Select Toll Plaza", PLAZAS,
+                key="eb_plaza", on_change=_on_plaza_change
+            )
+            consumer_number = TP_CONSUMER_MAP.get(toll_plaza, "N/A")
+st.info(f"Auto Fetched Consumer Number: {consumer_number}")
  
+            # Fresh fetch each render (fast; no cache objects)
             openings = fetch_openings(toll_plaza)
             if openings["error"]:
                 st.error(f"Opening fetch error: {openings['error']}")
-                # still render inputs so user can type; just seed with zeros
-                open_kwh  = 0.0
-                open_kvah = 0.0
+                open_kwh, open_kvah = 0.0, 0.0
             else:
                 open_kwh  = float((openings["data"] or {}).get("opening_kwh", 0.0) or 0.0)
                 open_kvah = float((openings["data"] or {}).get("opening_kvah", 0.0) or 0.0)
  
-            st.info(f"Opening KWH: {open_kwh:.2f} | Opening KVAH: {open_kvah:.2f}")
+st.info(f"Opening KWH: {open_kwh:.2f} | Opening KVAH: {open_kvah:.2f}")
  
-            # ---- Context-aware seeding ----
-            ctx = f"{toll_plaza}:{date}"
+            # Context-aware seeding: plaza + date
+            ctx = f"{toll_plaza}:{date_str}"
             ensure_ctx_seed(ctx, open_kwh=open_kwh, open_kvah=open_kvah)
  
-            # ---- Editable inputs bound to session_state ----
+            # Editable inputs (state-bound so they don't reset)
             st.text_input("Closing KWH",  key="closing_kwh_txt")
             st.text_input("Closing KVAH", key="closing_kvah_txt")
-            st.text_input("Power Factor (PF, 0.00-1.00)", key="pf_txt")
+            st.text_input("Power Factor (PF, 0.00–1.00)", key="pf_txt")
             st.text_input("Maximum Demand (MD kVA)", key="md_txt")
             st.text_input("Solar Unit Generated (kWh)  ➜ saved in 'remarks'", key="solar_txt")
  
             submitted = st.form_submit_button("Submit Reading", type="primary")
  
         if submitted:
-            # Parse and validate
+            # Parse numbers
             closing_kwh,  e1 = to_float(st.session_state.closing_kwh_txt, "Closing KWH")
             closing_kvah, e2 = to_float(st.session_state.closing_kvah_txt, "Closing KVAH")
-            pf,           e3 = to_float(st.session_state.pf_txt or "0", "PF")
-            md,           e4 = to_float(st.session_state.md_txt or "0", "MD")
-            for err in (e1,e2,e3,e4):
-                if err: st.error(err)
-            if any([e1,e2,e3,e4]): st.stop()
+            pf,           e3 = to_float(st.session_state.pf_txt or "0", "Power Factor")
+            md,           e4 = to_float(st.session_state.md_txt or "0", "Maximum Demand")
  
-            errs=[]
-            if not (0 <= pf <= 1): errs.append("PF must be between 0.00 and 1.00.")
-            if closing_kwh  < open_kwh:  errs.append("Closing KWH must be ≥ Opening KWH.")
-            if closing_kvah < open_kvah: errs.append("Closing KVAH must be ≥ Opening KVAH.")
-            if errs:
-                for m in errs: st.error("❌ " + m)
+            for err in (e1, e2, e3, e4):
+                if err: st.error(err)
+            if any([e1, e2, e3, e4]): st.stop()
+ 
+            # Validate
+            errors = []
+            if not (0.0 <= pf <= 1.0):
+                errors.append("PF must be between 0.00 and 1.00.")
+            if closing_kwh  < open_kwh:
+                errors.append("Closing KWH must be ≥ Opening KWH.")
+            if closing_kvah < open_kvah:
+                errors.append("Closing KVAH must be ≥ Opening KVAH.")
+            if errors:
+                for msg in errors: st.error("❌ " + msg)
                 st.stop()
  
+            # Compute nets
             net_kwh  = closing_kwh  - open_kwh
             net_kvah = closing_kvah - open_kvah
  
             payload = {
-                "date": date, "toll_plaza": toll_plaza, "consumer_number": consumer,
-                "opening_kwh": open_kwh, "closing_kwh": closing_kwh, "net_kwh": net_kwh,
-                "opening_kvah": open_kvah, "closing_kvah": closing_kvah, "net_kvah": net_kvah,
-                "pf": pf, "md": md,
-                "remarks": (st.session_state.solar_txt or "").strip()  # solar units stored in remarks
+                "date": date_str,
+                "toll_plaza": toll_plaza,
+                "consumer_number": consumer_number,
+                "opening_kwh": open_kwh,
+                "closing_kwh": closing_kwh,
+                "net_kwh": net_kwh,
+                "opening_kvah": open_kvah,
+                "closing_kvah": closing_kvah,
+                "net_kvah": net_kvah,
+                "pf": pf,
+                "md": md,
+                # store Solar Unit Generated text into 'remarks'
+                "remarks": (st.session_state.solar_txt or "").strip()
             }
  
             r1 = insert_reading(payload)
             if getattr(r1, "error", None):
                 st.error(f"❌ Submission failed: {r1.error}"); st.stop()
  
-            r2 = upsert_live(toll_plaza, consumer, closing_kwh, closing_kvah)
+            r2 = upsert_live(toll_plaza, consumer_number, closing_kwh, closing_kvah)
             if getattr(r2, "error", None):
-                st.error(f"❌ Live update failed: {r2.error}"); st.stop()
+                st.error(f"❌ Live-status update failed: {r2.error}"); st.stop()
  
-            # Reset inputs for same context (keep ctx so they don't instantly reseed)
+            # Keep context; reset text fields for next entry
             st.session_state["closing_kwh_txt"]  = f"{closing_kwh:.2f}"
             st.session_state["closing_kvah_txt"] = f"{closing_kvah:.2f}"
             st.session_state["pf_txt"]           = ""
@@ -138,13 +177,15 @@ def run():
     # ============== LAST 10 ==============
     elif choice == "Last 10 Readings":
         st.header("📄 Last 10 Readings")
-        plaza = st.selectbox("Filter by Toll Plaza", ["TP01","TP02","TP03"])
-        resp = sb.table("eb_meter_readings").select("*").eq("toll_plaza", plaza).order("id", desc=True).limit(10).execute()
-        if getattr(resp, "error", None): st.error(f"❌ Fetch error: {resp.error}")
+        plaza = st.selectbox("Filter by Toll Plaza", PLAZAS)
+        resp = sb.table("eb_meter_readings").select("*")\
+            .eq("toll_plaza", plaza).order("id", desc=True).limit(10).execute()
+        if getattr(resp, "error", None):
+            st.error(f"❌ Fetch error: {resp.error}")
         elif resp.data:
             st.dataframe(pd.DataFrame(resp.data), use_container_width=True)
         else:
-            st.info("No data found.")
+st.info("No data found.")
  
     # ============== ADMIN ==============
     elif choice == "Admin Block":
@@ -152,11 +193,10 @@ def run():
         pwd = st.text_input("Enter Admin Password", type="password")
         if pwd == "Sekura@2025":
             st.success("Access Granted.")
-            plaza = st.selectbox("Select Toll Plaza for Initialization", ["TP01","TP02","TP03"])
+            plaza = st.selectbox("Select Toll Plaza for Initialization", PLAZAS)
             consumer = TP_CONSUMER_MAP.get(plaza, "N/A")
-            st.info(f"Auto Fetched Consumer Number: {consumer}")
+st.info(f"Auto Fetched Consumer Number: {consumer}")
  
-            # Admin inputs (state-bound)
             if "admin_open_kwh" not in st.session_state: st.session_state["admin_open_kwh"] = "0"
             if "admin_open_kvah" not in st.session_state: st.session_state["admin_open_kvah"] = "0"
             st.text_input("Initialize Opening KWH",  key="admin_open_kwh")
@@ -165,7 +205,7 @@ def run():
             if st.button("Save Initialization", type="primary"):
                 open_kwh,  e1 = to_float(st.session_state.admin_open_kwh, "Opening KWH")
                 open_kvah, e2 = to_float(st.session_state.admin_open_kvah, "Opening KVAH")
-                for err in (e1,e2):
+                for err in (e1, e2):
                     if err: st.error(err)
                 if e1 or e2: st.stop()
  
@@ -190,11 +230,12 @@ def run():
                 st.error(f"❌ Fetch error: {resp.error}")
             elif resp.data:
                 df = pd.DataFrame(resp.data)
-                st.download_button("📥 Click to Download CSV", df.to_csv(index=False).encode("utf-8"),
-                                   "eb_meter_readings.csv", "text/csv")
+                st.download_button("📥 Click to Download CSV",
+                    df.to_csv(index=False).encode("utf-8"),
+                    "eb_meter_readings.csv", "text/csv")
             else:
-                st.info("No data found in this range.")
+st.info("No data found in this range.")
  
+# For Streamlit launcher
 if __name__ == "__main__":
     run()
- 
