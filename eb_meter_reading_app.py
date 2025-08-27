@@ -1,4 +1,4 @@
-# eb_meter_reading_app.py  — compact, clean, working
+# eb_meter_reading_app.py — compact, clean
 import os
 from datetime import datetime, timedelta
 import pandas as pd
@@ -31,7 +31,6 @@ PLAZAS = list(PLAZA_CONSUMER.keys())
 
 # ---------- Helpers ----------
 def f2(text: str, name: str):
-    """parse float from text; allow blank -> 0.0"""
     text = (text or "").strip()
     if text == "":
         return 0.0, None
@@ -86,7 +85,7 @@ def reset_ctx(plaza: str, date_str: str):
 def run():
     st.title("EB Meter Reading")
 
-    # Top utility
+    # Force clear cache button
     c_fc, _, _ = st.columns([1, 1, 1])
     with c_fc:
         if st.button("🧹 Force Clear Cache", use_container_width=True):
@@ -154,7 +153,7 @@ with r2:
                     st.success("Opening saved.")
                     st.rerun()
 
-# Context-scoped keys (so plaza/date switch reseeds correctly)
+# Context-scoped keys
 k_ckwh = kctx(plaza, date_str, "ckwh")
 k_ckvh = kctx(plaza, date_str, "ckvah")
 k_pf = kctx(plaza, date_str, "pf")
@@ -281,6 +280,33 @@ elif r.data:
 else:
     st.info("No data found.")
 
+# ================== DOWNLOAD CSV ==================
+elif page == "Download CSV":
+st.header("Download CSV")
+f = st.date_input("From", datetime.now() - timedelta(days=7))
+t = st.date_input("To", datetime.now())
+if st.button("Download"):
+    r = (
+        db.table("eb_meter_readings")
+        .select("*")
+        .gte("date", f.strftime("%Y-%m-%d"))
+        .lte("date", t.strftime("%Y-%m-%d"))
+        .execute()
+    )
+    if getattr(r, "error", None):
+        st.error(f"❌ Fetch error: {r.error}")
+    elif r.data:
+        df = pd.DataFrame(r.data)
+        st.download_button(
+            "Save CSV",
+            df.to_csv(index=False).encode("utf-8"),
+            "eb_meter_readings.csv",
+            "text/csv",
+        )
+    else:
+st.info("No data in range.")
+
 # ---------- Main ----------
 if __name__ == "__main__":
     run()
+
