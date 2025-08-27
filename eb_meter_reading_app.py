@@ -26,7 +26,7 @@ PLAZA_CONSUMER = {
     "TP02": "812001020208",
     "TP03": "813000000281",
 }
-PLAZA = list(PLAZA_CONSUMER.keys())
+PLAZAS = list(PLAZA_CONSUMER.keys())
 
 
 # ---------- Helpers ----------
@@ -283,6 +283,7 @@ else:
 # ---------- Main ----------
 if __name__ == "__main__":
     run()
+
 
 
 
