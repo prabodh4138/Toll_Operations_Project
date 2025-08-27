@@ -1,5 +1,5 @@
-# dg_module_app.py  (cache-safe)
-import os
+# dg_module_app.py  (session-cache, no serialization issues)
+import os, time
 from datetime import datetime
 import streamlit as st
 import pandas as pd
@@ -11,8 +11,27 @@ def get_client():
     url = os.getenv("SUPABASE_URL"); key = os.getenv("SUPABASE_KEY")
     if not url or not key: st.error("Missing SUPABASE_URL / SUPABASE_KEY"); st.stop()
     return create_client(url, key)
- 
 sb = get_client()
+ 
+# ---------- Simple session cache (no serialization) ----------
+TTL = 8  # seconds
+if "scache" not in st.session_state:
+    st.session_state.scache = {}  # key -> {"t":timestamp, "v":value}
+ 
+def session_cached(key, fetch_fn):
+    now = time.time()
+    entry = st.session_state.scache.get(key)
+    if entry and (now - entry["t"] < TTL):
+        return entry["v"]
+    val = fetch_fn()
+    st.session_state.scache[key] = {"t": now, "v": val}
+    return val
+ 
+def bust(key_prefix=None):
+    if key_prefix is None:
+        st.session_state.scache.clear()
+    else:
+        st.session_state.scache = {k:v for k,v in st.session_state.scache.items() if not k.startswith(key_prefix)}
  
 # ---------- Utils ----------
 PLAZAS = ["TP01","TP02","TP03"]; DGS = ["DG1","DG2"]
@@ -36,29 +55,25 @@ def rh_delta(open_rh, close_rh):
     if b<a: return None,"❌ Closing RH ≥ Opening RH"
     d=b-a; return f"{d//60}:{d%60:02d}", None
  
-# ---------- Cache only serializable dicts ----------
-CACHE_TTL = 8
- 
-@st.cache_data(ttl=CACHE_TTL, show_spinner=False)
-def get_opening(plaza, dg):
+# ---------- Fetchers (return plain dict) ----------
+def fetch_opening(plaza, dg):
     r = sb.table("dg_opening_status").select(
         "toll_plaza,dg_name,opening_diesel_stock,opening_kwh,opening_rh"
     ).eq("toll_plaza", plaza).eq("dg_name", dg).single().execute()
-    return {"data": r.data, "error": getattr(r, "error", None)}
+    return {"data": r.data, "error": str(getattr(r, "error", "")) or None}
  
-@st.cache_data(ttl=CACHE_TTL, show_spinner=False)
-def get_live(plaza):
+def fetch_live(plaza):
     r = sb.table("dg_live_status").select(
         "toll_plaza,updated_plaza_barrel_stock"
     ).eq("toll_plaza", plaza).single().execute()
-    return {"data": r.data, "error": getattr(r, "error", None)}
+    return {"data": r.data, "error": str(getattr(r, "error", "")) or None}
  
 def insert(table, data):  return sb.table(table).insert(data).execute()
 def upsert(table, data):  return sb.table(table).upsert(data).execute()
  
 # ---------- App ----------
 def run():
-    st.title("⚡ DG Monitoring (Cache-safe)")
+    st.title("⚡ DG Monitoring (stable & fast)")
  
     page = st.sidebar.selectbox("Menu", ["User Entry","Admin Init","Last 10"])
  
@@ -70,14 +85,17 @@ def run():
         if st.button("Initialize", type="primary"):
             v1,e1 = to_float(open_diesel,"Opening Diesel"); v2,e2 = to_float(open_kwh,"Opening KWH")
             if e1 or e2:
-                if e1: st.error(e1);
-                if e2: st.error(e2);
+                if e1: st.error(e1); 
+                if e2: st.error(e2); 
                 st.stop()
             if parse_rh(open_rh) is None: st.error("❌ RH must be hh:mm"); st.stop()
             r = upsert("dg_opening_status",{"toll_plaza":pl,"dg_name":dg,
                  "opening_diesel_stock":v1,"opening_kwh":v2,"opening_rh":open_rh or "0:00"})
             if getattr(r,"error",None): st.error(r.error)
-            else: st.success("✅ Saved"); get_opening.clear(); st.rerun()
+            else:
+                st.success("✅ Saved")
+                bust("open:")  # clear opening cache
+                st.rerun()
  
     if page=="User Entry":
         with st.form("f", clear_on_submit=False):
@@ -87,9 +105,9 @@ def run():
             with c2: dg = st.selectbox("DG", DGS, key="dg")
             with c3:
                 ref = st.form_submit_button("🔄 Refresh Opening", use_container_width=True)
-                if ref: get_opening.clear(); get_live.clear()
+                if ref: bust("open:"); bust("live:")
  
-            op = get_opening(pl,dg)
+            op = session_cached(f"open:{pl}:{dg}", lambda: fetch_opening(pl,dg))
             if op["error"]: st.error(f"Open fetch: {op['error']}"); sub=st.form_submit_button("Submit", disabled=True)
             elif not op["data"]: st.error("❌ Opening not initialized"); sub=st.form_submit_button("Submit", disabled=True)
             else:
@@ -97,11 +115,11 @@ def run():
                 o_diesel = float(o.get("opening_diesel_stock",0) or 0)
                 o_kwh    = float(o.get("opening_kwh",0) or 0)
                 o_rh     = str(o.get("opening_rh","0:00") or "0:00")
-st.info(f"Opening Diesel: {o_diesel:.2f} L | Opening KWH: {o_kwh:.2f} | Opening RH: {o_rh}")
+                st.info(f"Opening Diesel: {o_diesel:.2f} L | Opening KWH: {o_kwh:.2f} | Opening RH: {o_rh}")
  
-                lv = get_live(pl)
+                lv = session_cached(f"live:{pl}", lambda: fetch_live(pl))
                 curr_barrel = float((lv["data"] or {}).get("updated_plaza_barrel_stock",0) or 0)
-st.info(f"Plaza Barrel Stock: {curr_barrel:.2f} L")
+                st.info(f"Plaza Barrel Stock: {curr_barrel:.2f} L")
  
                 dp  = st.text_input("Diesel Purchase (L)","0")
                 dt  = st.text_input("Diesel Topup to DG (L)","0")
@@ -149,7 +167,8 @@ st.info(f"Plaza Barrel Stock: {curr_barrel:.2f} L")
             r3 = upsert("dg_opening_status", {"toll_plaza":pl,"dg_name":dg,
                                               "opening_diesel_stock":cds,"opening_kwh":ckwh,"opening_rh":crh})
             if getattr(r3,"error",None): st.error(f"Opening update failed: {r3.error}"); st.stop()
-            get_opening.clear(); get_live.clear()
+ 
+            bust("open:"); bust("live:")
             st.success("✅ Saved & Opening updated"); st.rerun()
  
     if page=="Last 10":
@@ -160,7 +179,8 @@ st.info(f"Plaza Barrel Stock: {curr_barrel:.2f} L")
             df = pd.DataFrame(r.data); st.dataframe(df, use_container_width=True)
             st.download_button("📥 Download CSV", df.to_csv(index=False).encode(), f"{pl}_dg_last10.csv","text/csv")
         else:
-st.info("No transactions found.")
+            st.info("No transactions found.")
  
 if __name__ == "__main__":
     run()
+ 
