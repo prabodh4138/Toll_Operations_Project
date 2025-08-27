@@ -212,7 +212,7 @@ if sub:
     st.session_state[k_sol] = ""
 
 elif page == "Admin Init":
-st.header("Admin Init")
+    st.header("Admin Init")
 plaza = st.selectbox("Plaza", PLAZAS)
 consumer = PLAZA_CONSUMER.get(plaza, "N/A")
 st.info(f"Consumer: {consumer}")
@@ -232,7 +232,7 @@ if st.button("Save Opening", type="primary"):
             st.success("Saved.")
 
 elif page == "Last 10":
-st.header("Last 10 Readings")
+    st.header("Last 10 Readings")
 plaza = st.selectbox("Plaza", PLAZAS)
 r = db.table("eb_meter_readings").select("*") \
     .eq("toll_plaza", plaza).order("id", desc=True).limit(10).execute()
@@ -241,7 +241,7 @@ if getattr(r, "error", None):
 elif r.data:
     st.dataframe(pd.DataFrame(r.data), use_container_width=True)
 else:
-st.info("No data found.")
+    st.info("No data found.")
 
 elif page == "Download CSV":
 st.header("Download CSV")
