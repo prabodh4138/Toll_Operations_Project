@@ -1,4 +1,4 @@
-# eb_meter_reading_app.py
+# eb_meter_reading_app.py — plaza/date OUTSIDE the form; instant auto-fetch; context-safe keys
 import os
 from datetime import datetime, timedelta
 import streamlit as st
@@ -14,6 +14,7 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 @st.cache_resource
 def supabase_client():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
+ 
 sb = supabase_client()
  
 # ---------- Config ----------
@@ -35,7 +36,6 @@ def to_float(s: str, field_name: str):
         return None, f"❌ {field_name}: please enter a number."
  
 def fetch_openings(plaza: str):
-    """Opening KWH/KVAH from eb_live_status."""
     r = sb.table("eb_live_status").select("opening_kwh, opening_kvah")\
         .eq("toll_plaza", plaza).single().execute()
     return {"data": r.data, "error": getattr(r, "error", None)}
@@ -51,21 +51,9 @@ def upsert_live(plaza: str, consumer: str, opening_kwh: float, opening_kvah: flo
         "opening_kvah": opening_kvah
     }).execute()
  
-# Reset state when plaza changes
-def _on_plaza_change():
-    st.session_state.pop("eb_ctx", None)
-    for k in ["closing_kwh_txt","closing_kvah_txt","pf_txt","md_txt","solar_txt"]:
-        st.session_state.pop(k, None)
- 
-# Seed inputs once per (plaza:date) context
-def ensure_ctx_seed(ctx_key: str, open_kwh: float, open_kvah: float):
-    if st.session_state.get("eb_ctx") != ctx_key:
-        st.session_state["eb_ctx"] = ctx_key
-        st.session_state["closing_kwh_txt"]  = f"{open_kwh:.2f}"
-        st.session_state["closing_kvah_txt"] = f"{open_kvah:.2f}"
-        st.session_state["pf_txt"]           = ""
-        st.session_state["md_txt"]           = ""
-        st.session_state["solar_txt"]        = ""
+def ctx_key(plaza: str, date_str: str, name: str):
+    """Unique session_state key per (plaza, date, field)."""
+    return f"eb::{plaza}::{date_str}::{name}"
  
 # ---------- App ----------
 def run():
@@ -78,66 +66,71 @@ def run():
     if choice == "User Block":
         st.header("🛠️ User Block - Enter Readings")
  
+        # ---- Put context selectors OUTSIDE the form so they rerun immediately ----
+        colA, colB = st.columns([1,1])
+        with colA:
+            date_obj = st.date_input("Select Date", datetime.now(), key="eb_date_selector")
+        with colB:
+            toll_plaza = st.selectbox("Select Toll Plaza", PLAZAS, key="eb_plaza_selector")
+ 
+        date_str = date_obj.strftime("%Y-%m-%d")
+        st.info(f"Selected: **{toll_plaza}** | Date: **{date_obj.strftime('%d-%m-%Y')}**")
+ 
+        consumer_number = TP_CONSUMER_MAP.get(toll_plaza, "N/A")
+        st.info(f"Auto Fetched Consumer Number: **{consumer_number}**")
+ 
+        # ---- Fresh opening fetch on every rerun (fast call) ----
+        openings = fetch_openings(toll_plaza)
+        if openings["error"]:
+            st.error(f"Opening fetch error: {openings['error']}")
+            open_kwh, open_kvah = 0.0, 0.0
+        else:
+            open_kwh  = float((openings["data"] or {}).get("opening_kwh", 0.0) or 0.0)
+            open_kvah = float((openings["data"] or {}).get("opening_kvah", 0.0) or 0.0)
+ 
+        st.info(f"Opening KWH: **{open_kwh:.2f}** | Opening KVAH: **{open_kvah:.2f}**")
+ 
+        # ---- Context-scoped keys so switching plaza/date reseeds correctly ----
+        ckwh_key  = ctx_key(toll_plaza, date_str, "closing_kwh_txt")
+        ckvah_key = ctx_key(toll_plaza, date_str, "closing_kvah_txt")
+        pf_key    = ctx_key(toll_plaza, date_str, "pf_txt")
+        md_key    = ctx_key(toll_plaza, date_str, "md_txt")
+        sol_key   = ctx_key(toll_plaza, date_str, "solar_txt")
+ 
+        # Seed defaults ONCE per context
+        if ckwh_key not in st.session_state:  st.session_state[ckwh_key]  = f"{open_kwh:.2f}"
+        if ckvah_key not in st.session_state: st.session_state[ckvah_key] = f"{open_kvah:.2f}"
+        if pf_key not in st.session_state:    st.session_state[pf_key]    = ""
+        if md_key not in st.session_state:    st.session_state[md_key]    = ""
+        if sol_key not in st.session_state:   st.session_state[sol_key]   = ""
+ 
+        # ---- The form only contains the editable fields + submit button ----
         with st.form("eb_form", clear_on_submit=False):
-            date_obj = st.date_input("Select Date", datetime.now())
-            date_str = date_obj.strftime("%Y-%m-%d")
-st.info(f"Selected Date: {date_obj.strftime('%d-%m-%Y')}")
- 
-            toll_plaza = st.selectbox(
-                "Select Toll Plaza", PLAZAS,
-                key="eb_plaza", on_change=_on_plaza_change
-            )
-            consumer_number = TP_CONSUMER_MAP.get(toll_plaza, "N/A")
-st.info(f"Auto Fetched Consumer Number: {consumer_number}")
- 
-            # Fresh fetch each render (fast; no cache objects)
-            openings = fetch_openings(toll_plaza)
-            if openings["error"]:
-                st.error(f"Opening fetch error: {openings['error']}")
-                open_kwh, open_kvah = 0.0, 0.0
-            else:
-                open_kwh  = float((openings["data"] or {}).get("opening_kwh", 0.0) or 0.0)
-                open_kvah = float((openings["data"] or {}).get("opening_kvah", 0.0) or 0.0)
- 
-st.info(f"Opening KWH: {open_kwh:.2f} | Opening KVAH: {open_kvah:.2f}")
- 
-            # Context-aware seeding: plaza + date
-            ctx = f"{toll_plaza}:{date_str}"
-            ensure_ctx_seed(ctx, open_kwh=open_kwh, open_kvah=open_kvah)
- 
-            # Editable inputs (state-bound so they don't reset)
-            st.text_input("Closing KWH",  key="closing_kwh_txt")
-            st.text_input("Closing KVAH", key="closing_kvah_txt")
-            st.text_input("Power Factor (PF, 0.00–1.00)", key="pf_txt")
-            st.text_input("Maximum Demand (MD kVA)", key="md_txt")
-            st.text_input("Solar Unit Generated (kWh)  ➜ saved in 'remarks'", key="solar_txt")
- 
+            st.text_input("Closing KWH",  key=ckwh_key)
+            st.text_input("Closing KVAH", key=ckvah_key)
+            st.text_input("Power Factor (PF, 0.00–1.00)", key=pf_key)
+            st.text_input("Maximum Demand (MD kVA)", key=md_key)
+            st.text_input("Solar Unit Generated (kWh)  ➜ saved in 'remarks'", key=sol_key)
             submitted = st.form_submit_button("Submit Reading", type="primary")
  
         if submitted:
-            # Parse numbers
-            closing_kwh,  e1 = to_float(st.session_state.closing_kwh_txt, "Closing KWH")
-            closing_kvah, e2 = to_float(st.session_state.closing_kvah_txt, "Closing KVAH")
-            pf,           e3 = to_float(st.session_state.pf_txt or "0", "Power Factor")
-            md,           e4 = to_float(st.session_state.md_txt or "0", "Maximum Demand")
- 
-            for err in (e1, e2, e3, e4):
+            # Read from session_state using the context keys
+            closing_kwh,  e1 = to_float(st.session_state[ckwh_key],  "Closing KWH")
+            closing_kvah, e2 = to_float(st.session_state[ckvah_key], "Closing KVAH")
+            pf,           e3 = to_float(st.session_state[pf_key] or "0", "Power Factor")
+            md,           e4 = to_float(st.session_state[md_key] or "0", "Maximum Demand")
+            for err in (e1,e2,e3,e4):
                 if err: st.error(err)
-            if any([e1, e2, e3, e4]): st.stop()
+            if any([e1,e2,e3,e4]): st.stop()
  
-            # Validate
             errors = []
-            if not (0.0 <= pf <= 1.0):
-                errors.append("PF must be between 0.00 and 1.00.")
-            if closing_kwh  < open_kwh:
-                errors.append("Closing KWH must be ≥ Opening KWH.")
-            if closing_kvah < open_kvah:
-                errors.append("Closing KVAH must be ≥ Opening KVAH.")
+            if not (0.0 <= pf <= 1.0): errors.append("PF must be between 0.00 and 1.00.")
+            if closing_kwh  < open_kwh:  errors.append("Closing KWH must be ≥ Opening KWH.")
+            if closing_kvah < open_kvah: errors.append("Closing KVAH must be ≥ Opening KVAH.")
             if errors:
-                for msg in errors: st.error("❌ " + msg)
+                for m in errors: st.error("❌ " + m)
                 st.stop()
  
-            # Compute nets
             net_kwh  = closing_kwh  - open_kwh
             net_kvah = closing_kvah - open_kvah
  
@@ -154,7 +147,7 @@ st.info(f"Opening KWH: {open_kwh:.2f} | Opening KVAH: {open_kvah:.2f}")
                 "pf": pf,
                 "md": md,
                 # store Solar Unit Generated text into 'remarks'
-                "remarks": (st.session_state.solar_txt or "").strip()
+                "remarks": (st.session_state[sol_key] or "").strip()
             }
  
             r1 = insert_reading(payload)
@@ -163,16 +156,16 @@ st.info(f"Opening KWH: {open_kwh:.2f} | Opening KVAH: {open_kvah:.2f}")
  
             r2 = upsert_live(toll_plaza, consumer_number, closing_kwh, closing_kvah)
             if getattr(r2, "error", None):
-                st.error(f"❌ Live-status update failed: {r2.error}"); st.stop()
+                st.error(f"❌ Live-status update failed: {r2['error']}"); st.stop()
  
-            # Keep context; reset text fields for next entry
-            st.session_state["closing_kwh_txt"]  = f"{closing_kwh:.2f}"
-            st.session_state["closing_kvah_txt"] = f"{closing_kvah:.2f}"
-            st.session_state["pf_txt"]           = ""
-            st.session_state["md_txt"]           = ""
-            st.session_state["solar_txt"]        = ""
+            # After submit, keep context but refresh defaults to latest closing values
+            st.session_state[ckwh_key]  = f"{closing_kwh:.2f}"
+            st.session_state[ckvah_key] = f"{closing_kvah:.2f}"
+            st.session_state[pf_key]    = ""
+            st.session_state[md_key]    = ""
+            st.session_state[sol_key]   = ""
  
-            st.success(f"✅ Reading submitted. Net KWH: {net_kwh:.2f} | Net KVAH: {net_kvah:.2f}")
+            st.success(f"✅ Reading submitted for {toll_plaza}. Net KWH: {net_kwh:.2f} | Net KVAH: {net_kvah:.2f}")
  
     # ============== LAST 10 ==============
     elif choice == "Last 10 Readings":
@@ -185,7 +178,7 @@ st.info(f"Opening KWH: {open_kwh:.2f} | Opening KVAH: {open_kvah:.2f}")
         elif resp.data:
             st.dataframe(pd.DataFrame(resp.data), use_container_width=True)
         else:
-st.info("No data found.")
+            st.info("No data found.")
  
     # ============== ADMIN ==============
     elif choice == "Admin Block":
@@ -195,17 +188,19 @@ st.info("No data found.")
             st.success("Access Granted.")
             plaza = st.selectbox("Select Toll Plaza for Initialization", PLAZAS)
             consumer = TP_CONSUMER_MAP.get(plaza, "N/A")
-st.info(f"Auto Fetched Consumer Number: {consumer}")
+            st.info(f"Auto Fetched Consumer Number: {consumer}")
  
-            if "admin_open_kwh" not in st.session_state: st.session_state["admin_open_kwh"] = "0"
-            if "admin_open_kvah" not in st.session_state: st.session_state["admin_open_kvah"] = "0"
-            st.text_input("Initialize Opening KWH",  key="admin_open_kwh")
-            st.text_input("Initialize Opening KVAH", key="admin_open_kvah")
+            # Admin fields (simple, state-bound)
+            k1, k2 = f"admin_open_kwh_{plaza}", f"admin_open_kvah_{plaza}"
+            if k1 not in st.session_state: st.session_state[k1] = "0"
+            if k2 not in st.session_state: st.session_state[k2] = "0"
+            st.text_input("Initialize Opening KWH",  key=k1)
+            st.text_input("Initialize Opening KVAH", key=k2)
  
             if st.button("Save Initialization", type="primary"):
-                open_kwh,  e1 = to_float(st.session_state.admin_open_kwh, "Opening KWH")
-                open_kvah, e2 = to_float(st.session_state.admin_open_kvah, "Opening KVAH")
-                for err in (e1, e2):
+                open_kwh,  e1 = to_float(st.session_state[k1], "Opening KWH")
+                open_kvah, e2 = to_float(st.session_state[k2], "Opening KVAH")
+                for err in (e1,e2):
                     if err: st.error(err)
                 if e1 or e2: st.stop()
  
@@ -234,8 +229,9 @@ st.info(f"Auto Fetched Consumer Number: {consumer}")
                     df.to_csv(index=False).encode("utf-8"),
                     "eb_meter_readings.csv", "text/csv")
             else:
-st.info("No data found in this range.")
+                st.info("No data found in this range.")
  
 # For Streamlit launcher
 if __name__ == "__main__":
     run()
+ 
