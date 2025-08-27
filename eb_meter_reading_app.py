@@ -243,20 +243,40 @@ elif r.data:
 else:
     st.info("No data found.")
 
+    # ===== LAST 10 =====
+    elif page == "Last 10":
+    st.header("📄 Last 10 Readings")
+    plaza = st.selectbox("Plaza", PLAZAS)
+    r = (
+        db.table("eb_meter_readings")
+        .select("*")
+        .eq("toll_plaza", plaza)
+        .order("id", desc=True)
+        .limit(10)
+        .execute()
+    )
+    if getattr(r, "error", None):
+        st.error(f"❌ Fetch error: {r.error}")
+    elif r.data:
+        df = pd.DataFrame(r.data)
+        st.dataframe(df, use_container_width=True)
+    else:
+st.info("No data found.")
+
+# ===== DOWNLOAD CSV =====
 elif page == "Download CSV":
 st.header("📥 Download CSV")
 f = st.date_input("From", datetime.now() - timedelta(days=7))
 t = st.date_input("To", datetime.now())
 
 if st.button("Download"):
-    query = (
+    r = (
         db.table("eb_meter_readings")
         .select("*")
         .gte("date", f.strftime("%Y-%m-%d"))
         .lte("date", t.strftime("%Y-%m-%d"))
+        .execute()
     )
-    r = query.execute()
-
     if getattr(r, "error", None):
         st.error(f"❌ Fetch error: {r.error}")
     elif r.data:
@@ -265,7 +285,7 @@ if st.button("Download"):
             "Save CSV",
             df.to_csv(index=False).encode("utf-8"),
             "eb_meter_readings.csv",
-            "text/csv"
+            "text/csv",
         )
     else:
 st.info("No data in range.")
