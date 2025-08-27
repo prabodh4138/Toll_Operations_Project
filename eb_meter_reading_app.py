@@ -280,33 +280,8 @@ elif r.data:
 else:
     st.info("No data found.")
 
-# ================== DOWNLOAD CSV ==================
-elif page == "Download CSV":
-st.header("Download CSV")
-f = st.date_input("From", datetime.now() - timedelta(days=7))
-t = st.date_input("To", datetime.now())
-if st.button("Download"):
-    r = (
-        db.table("eb_meter_readings")
-        .select("*")
-        .gte("date", f.strftime("%Y-%m-%d"))
-        .lte("date", t.strftime("%Y-%m-%d"))
-        .execute()
-    )
-    if getattr(r, "error", None):
-        st.error(f"❌ Fetch error: {r.error}")
-    elif r.data:
-        df = pd.DataFrame(r.data)
-        st.download_button(
-            "Save CSV",
-            df.to_csv(index=False).encode("utf-8"),
-            "eb_meter_readings.csv",
-            "text/csv",
-        )
-    else:
-st.info("No data in range.")
-
 # ---------- Main ----------
 if __name__ == "__main__":
     run()
+
 
