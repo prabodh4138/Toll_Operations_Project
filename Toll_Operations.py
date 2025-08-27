@@ -1,5 +1,6 @@
-import streamlit as st
+# Toll_Operations.py
 import importlib
+import streamlit as st
  
 st.set_page_config(page_title="Sekura Toll Ops", layout="wide")
  
@@ -19,8 +20,11 @@ def load_module(mod_name: str):
  
 def main():
     st.title("🛣️ Sekura Toll Plaza Operations Dashboard")
-    choice = st.sidebar.selectbox("Select Module", list(MODULES.keys()))
  
+    # If you want a subtitle like the one that caused the error, do it like this:
+    # st.markdown("HOME | Model | Media Group")
+ 
+    choice = st.sidebar.selectbox("Select Module", list(MODULES.keys()))
     mod = load_module(MODULES[choice])
     if not mod:
         return
@@ -32,10 +36,8 @@ def main():
     try:
         mod.run()
     except Exception as e:
-        st.exception(e)  # show full stacktrace
+        st.exception(e)
  
 if __name__ == "__main__":
     main()
-HOME | Model Media Group
-Model Media is the leader of Aisian adult film, producing and distributing high-quality domestic AV, committed to promoting the internationalization of the Aisian AV market. Our services include ad...
  
