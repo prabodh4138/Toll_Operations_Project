@@ -1,55 +1,65 @@
-# dg_module_app.py  (short version)
+# dg_module_app.py  (cache-safe)
 import os
 from datetime import datetime
 import streamlit as st
 import pandas as pd
 from supabase import create_client
  
-# ---- Supabase ----
-URL = os.getenv("SUPABASE_URL")
-KEY = os.getenv("SUPABASE_KEY")
-if not URL or not KEY:
-    st.error("Missing SUPABASE_URL / SUPABASE_KEY"); st.stop()
-sb = create_client(URL, KEY)
+# ---------- Supabase ----------
+@st.cache_resource
+def get_client():
+    url = os.getenv("SUPABASE_URL"); key = os.getenv("SUPABASE_KEY")
+    if not url or not key: st.error("Missing SUPABASE_URL / SUPABASE_KEY"); st.stop()
+    return create_client(url, key)
  
-# ---- Utils ----
+sb = get_client()
+ 
+# ---------- Utils ----------
 PLAZAS = ["TP01","TP02","TP03"]; DGS = ["DG1","DG2"]
+ 
 def to_float(s, name):
     s = (s or "").strip()
     if s == "": return 0.0, None
     try: return float(s), None
     except: return None, f"❌ {name}: enter a number"
+ 
 def parse_rh(s):
     try:
         h,m = str(s).strip().split(":"); h=int(h); m=int(m)
         if h<0 or m<0 or m>=60: return None
         return h*60+m
     except: return None
+ 
 def rh_delta(open_rh, close_rh):
     a,b = parse_rh(open_rh), parse_rh(close_rh)
-    if a is None or b is None: return None,"❌ RH must be hh:mm"; 
+    if a is None or b is None: return None,"❌ RH must be hh:mm"
     if b<a: return None,"❌ Closing RH ≥ Opening RH"
     d=b-a; return f"{d//60}:{d%60:02d}", None
  
-# ---- tiny cache ----
-@st.cache_data(ttl=8, show_spinner=False)
-def get_opening(plaza,dg):
-    return sb.table("dg_opening_status").select(
+# ---------- Cache only serializable dicts ----------
+CACHE_TTL = 8
+ 
+@st.cache_data(ttl=CACHE_TTL, show_spinner=False)
+def get_opening(plaza, dg):
+    r = sb.table("dg_opening_status").select(
         "toll_plaza,dg_name,opening_diesel_stock,opening_kwh,opening_rh"
-    ).eq("toll_plaza",plaza).eq("dg_name",dg).single().execute()
+    ).eq("toll_plaza", plaza).eq("dg_name", dg).single().execute()
+    return {"data": r.data, "error": getattr(r, "error", None)}
  
-@st.cache_data(ttl=8, show_spinner=False)
+@st.cache_data(ttl=CACHE_TTL, show_spinner=False)
 def get_live(plaza):
-    return sb.table("dg_live_status").select(
+    r = sb.table("dg_live_status").select(
         "toll_plaza,updated_plaza_barrel_stock"
-    ).eq("toll_plaza",plaza).single().execute()
+    ).eq("toll_plaza", plaza).single().execute()
+    return {"data": r.data, "error": getattr(r, "error", None)}
  
-def insert(table,data): return sb.table(table).insert(data).execute()
-def upsert(table,data): return sb.table(table).upsert(data).execute()
+def insert(table, data):  return sb.table(table).insert(data).execute()
+def upsert(table, data):  return sb.table(table).upsert(data).execute()
  
-# ---- App ----
+# ---------- App ----------
 def run():
-    st.title("⚡ DG Monitoring (Fast & Editable)")
+    st.title("⚡ DG Monitoring (Cache-safe)")
+ 
     page = st.sidebar.selectbox("Menu", ["User Entry","Admin Init","Last 10"])
  
     if page=="Admin Init":
@@ -59,9 +69,9 @@ def run():
         open_rh     = st.text_input("Opening RH (hh:mm)","",placeholder="4435:12")
         if st.button("Initialize", type="primary"):
             v1,e1 = to_float(open_diesel,"Opening Diesel"); v2,e2 = to_float(open_kwh,"Opening KWH")
-            if e1 or e2: 
-                if e1: st.error(e1); 
-                if e2: st.error(e2); 
+            if e1 or e2:
+                if e1: st.error(e1);
+                if e2: st.error(e2);
                 st.stop()
             if parse_rh(open_rh) is None: st.error("❌ RH must be hh:mm"); st.stop()
             r = upsert("dg_opening_status",{"toll_plaza":pl,"dg_name":dg,
@@ -75,36 +85,39 @@ def run():
             c1,c2,c3 = st.columns([1,1,1])
             with c1: pl = st.selectbox("Toll Plaza", PLAZAS, key="pl")
             with c2: dg = st.selectbox("DG", DGS, key="dg")
-            with c3: ref = st.form_submit_button("🔄 Refresh Opening")
-            if ref: get_opening.clear(); get_live.clear()
+            with c3:
+                ref = st.form_submit_button("🔄 Refresh Opening", use_container_width=True)
+                if ref: get_opening.clear(); get_live.clear()
  
             op = get_opening(pl,dg)
-            if getattr(op,"error",None): st.error(f"Open fetch: {op.error}"); sub=st.form_submit_button("Submit", disabled=True)
-            elif not op.data: st.error("❌ Opening not initialized"); sub=st.form_submit_button("Submit", disabled=True)
+            if op["error"]: st.error(f"Open fetch: {op['error']}"); sub=st.form_submit_button("Submit", disabled=True)
+            elif not op["data"]: st.error("❌ Opening not initialized"); sub=st.form_submit_button("Submit", disabled=True)
             else:
-                o = op.data
+                o = op["data"]
                 o_diesel = float(o.get("opening_diesel_stock",0) or 0)
                 o_kwh    = float(o.get("opening_kwh",0) or 0)
                 o_rh     = str(o.get("opening_rh","0:00") or "0:00")
-                st.info(f"Opening Diesel: {o_diesel:.2f} L | Opening KWH: {o_kwh:.2f} | Opening RH: {o_rh}")
+st.info(f"Opening Diesel: {o_diesel:.2f} L | Opening KWH: {o_kwh:.2f} | Opening RH: {o_rh}")
  
                 lv = get_live(pl)
-                curr_barrel = float((lv.data or {}).get("updated_plaza_barrel_stock",0) or 0)
-                st.info(f"Plaza Barrel Stock: {curr_barrel:.2f} L")
+                curr_barrel = float((lv["data"] or {}).get("updated_plaza_barrel_stock",0) or 0)
+st.info(f"Plaza Barrel Stock: {curr_barrel:.2f} L")
  
-                dp = st.text_input("Diesel Purchase (L)","0")
-                dt = st.text_input("Diesel Topup to DG (L)","0")
+                dp  = st.text_input("Diesel Purchase (L)","0")
+                dt  = st.text_input("Diesel Topup to DG (L)","0")
                 cds = st.text_input("Closing Diesel Stock (L)","0")
-                ckwh = st.text_input("Closing KWH", f"{o_kwh:.2f}")
-                crh  = st.text_input("Closing RH (hh:mm)","",placeholder="4436:30")
-                md   = st.text_input("Maximum Demand (kVA)","0")
-                rm   = st.text_area("Remarks","")
-                sub  = st.form_submit_button("Submit", type="primary")
+                ckwh= st.text_input("Closing KWH", f"{o_kwh:.2f}")
+                crh = st.text_input("Closing RH (hh:mm)","",placeholder="4436:30")
+                md  = st.text_input("Maximum Demand (kVA)","0")
+                rm  = st.text_area("Remarks","")
+                sub = st.form_submit_button("Submit", type="primary")
  
-        if 'sub' in locals() and sub and op.data:
-            dp, e1 = to_float(dp,"Diesel Purchase"); dt, e2 = to_float(dt,"Diesel Topup")
-            cds, e3 = to_float(cds,"Closing Diesel Stock"); ckwh, e4 = to_float(ckwh,"Closing KWH")
-            md, e5  = to_float(md,"Maximum Demand")
+        if 'sub' in locals() and sub and op["data"]:
+            dp, e1 = to_float(dp,"Diesel Purchase")
+            dt, e2 = to_float(dt,"Diesel Topup")
+            cds, e3 = to_float(cds,"Closing Diesel Stock")
+            ckwh,e4 = to_float(ckwh,"Closing KWH")
+            md,  e5 = to_float(md,"Maximum Demand")
             for e in [e1,e2,e3,e4,e5]:
                 if e: st.error(e)
             if any([e1,e2,e3,e4,e5]): st.stop()
@@ -115,9 +128,8 @@ def run():
             if ckwh < o_kwh: errs.append("Closing KWH must be ≥ Opening KWH")
             net_rh, rh_err = rh_delta(o_rh, crh)
             if rh_err: errs.append(rh_err)
-            if errs: 
-                for e in errs: st.error("❌ "+e); 
-                st.stop()
+            if errs:
+                for x in errs: st.error("❌ "+x); st.stop()
  
             diesel_cons = max_close - cds
             upd_barrel  = curr_barrel + dp - dt
@@ -147,8 +159,8 @@ def run():
         elif r.data:
             df = pd.DataFrame(r.data); st.dataframe(df, use_container_width=True)
             st.download_button("📥 Download CSV", df.to_csv(index=False).encode(), f"{pl}_dg_last10.csv","text/csv")
-        else: st.info("No transactions found.")
+        else:
+st.info("No transactions found.")
  
 if __name__ == "__main__":
     run()
- 
