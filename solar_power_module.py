@@ -97,7 +97,7 @@ def insert_generation_row(payload: dict) -> bool:
 # -----------------------------
 # UI Module
 # -----------------------------
-def solar_generation_module():
+def solar_power_module():
     st.subheader("🔆 Solar Power Plant Generation")
  
     # --- Top row: Date, Plaza, Refresh ---
@@ -204,7 +204,5 @@ def solar_generation_module():
  
 # Local test
 if __name__ == "__main__":
-    solar_generation_module()
- def run():
-     solar_generation_module()
+    solar_power_module()
  
