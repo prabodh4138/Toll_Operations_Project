@@ -205,4 +205,6 @@ def solar_generation_module():
 # Local test
 if __name__ == "__main__":
     solar_generation_module()
+ def run():
+     solar_generation_module()
  
