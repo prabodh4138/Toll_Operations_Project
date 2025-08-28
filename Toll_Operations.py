@@ -9,6 +9,7 @@ MODULES = {
     "EB Meter Reading": "eb_meter_reading_app",
     "Highway Meter Reading": "highway_reading_app",
     "Inventory Management": "inventory_management_app",
+    "Solar Generation": "solar_power_module",
 }
  
 def load_module(mod_name: str):
@@ -40,5 +41,6 @@ def main():
  
 if __name__ == "__main__":
     main()
+
 
 
