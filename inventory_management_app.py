@@ -146,7 +146,7 @@ def run():
                     available_stock = float(first.get("available_stock") or 0.0)
                 st.dataframe(pd.DataFrame(suggestions).reset_index(drop=True))
             else:
-st.info("No suggestions yet. Start typing a material keyword.")
+                st.info("No suggestions yet. Start typing a material keyword.")
  
         # Bulk or single transaction flows
         selected_items = []
@@ -225,3 +225,4 @@ st.info("No data available to download.")
 if __name__ == "__main__":
     run()
 # ---------- END PART 2 ----------
+
