@@ -160,12 +160,13 @@ def run():
                     mime='text/csv',
                 )
             else:
-st.info("No data available for download.")
+                st.info("No data available for download.")
         except Exception as e:
             st.error(f"Error downloading data: {e}")
  
  
 if __name__ == "__main__":
     run()
+
 
 
