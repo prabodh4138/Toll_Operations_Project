@@ -25,7 +25,7 @@ def run():
         date_obj = st.date_input("Select Date", datetime.now())
         display_date = date_obj.strftime("%d-%m-%Y")
         iso_date = date_obj.strftime("%Y-%m-%d")
-st.info(f"Selected Date: {display_date}")
+        st.info(f"Selected Date: {display_date}")
  
         toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
  
@@ -56,12 +56,12 @@ st.info(f"Selected Date: {display_date}")
         except Exception as e:
             st.warning(f"Error fetching live data: {e}")
  
-st.info(f"Opening KWH: {opening_kwh:.2f}")
+        st.info(f"Opening KWH: {opening_kwh:.2f}")
         closing_kwh = st.number_input("Closing KWH", min_value=opening_kwh, format="%.2f")
         net_kwh = float(closing_kwh) - float(opening_kwh)
         st.success(f"Net KWH: {net_kwh:.2f}")
  
-st.info(f"Opening KVAH: {opening_kvah:.2f}")
+        st.info(f"Opening KVAH: {opening_kvah:.2f}")
         closing_kvah = st.number_input("Closing KVAH", min_value=opening_kvah, format="%.2f")
         net_kvah = float(closing_kvah) - float(opening_kvah)
         st.success(f"Net KVAH: {net_kvah:.2f}")
@@ -109,7 +109,7 @@ st.info(f"Opening KVAH: {opening_kvah:.2f}")
                 if debug: st.write("DEBUG: verify_resp:", verify)
                 if verify.data:
                     v = verify.data[0]
-st.info(f"Verified live status — opening_kwh: {v.get('opening_kwh')}, opening_kvah: {v.get('opening_kvah')}")
+                   st.info(f"Verified live status — opening_kwh: {v.get('opening_kwh')}, opening_kvah: {v.get('opening_kvah')}")
                 else:
                     st.warning("Verification: no live_status row found after upsert.")
  
@@ -127,7 +127,7 @@ st.info(f"Verified live status — opening_kwh: {v.get('opening_kwh')}, opening_
                 df = pd.DataFrame(readings_resp.data)
                 st.dataframe(df)
             else:
-st.info("No readings found.")
+               st.info("No readings found.")
         except Exception as e:
             st.error(f"Error fetching data: {e}")
  
@@ -166,7 +166,7 @@ st.info("No readings found.")
                     if debug: st.write("DEBUG: verify_resp_admin:", verify)
                     if verify.data:
                         v = verify.data[0]
-st.info(f"Verified initialization — opening_kwh: {v.get('opening_kwh')}, opening_kvah: {v.get('opening_kvah')}")
+                       st.info(f"Verified initialization — opening_kwh: {v.get('opening_kwh')}, opening_kvah: {v.get('opening_kvah')}")
                     st.rerun()
             except Exception as e:
                 st.error(f"❌ Initialization failed: {e}")
@@ -187,10 +187,11 @@ st.info(f"Verified initialization — opening_kwh: {v.get('opening_kwh')}, openi
                     mime='text/csv',
                 )
             else:
-st.info("No data available for download.")
+              st.info("No data available for download.")
         except Exception as e:
             st.error(f"Error downloading data: {e}")
  
  
 if __name__ == "__main__":
     run()
+
