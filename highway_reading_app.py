@@ -21,7 +21,7 @@ def run():
         date_obj = st.date_input("Select Date", datetime.now())
         display_date = date_obj.strftime("%d-%m-%Y")
         iso_date = date_obj.strftime("%Y-%m-%d")
-st.info(f"Selected Date: {display_date}")
+        st.info(f"Selected Date: {display_date}")
  
         toll_plaza = st.selectbox("Select Toll Plaza", ["TP01", "TP02", "TP03"])
  
@@ -167,3 +167,4 @@ st.info("No data available for download.")
  
 if __name__ == "__main__":
     run()
+
