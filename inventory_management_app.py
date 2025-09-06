@@ -183,7 +183,7 @@ def run():
                     st.experimental_rerun()
  
         elif material_code:
-st.info(f"Available Stock: {available_stock} for Material Code: {material_code}")
+            st.info(f"Available Stock: {available_stock} for Material Code: {material_code}")
             transaction_type = st.selectbox("Transaction Type", ["Stock In", "Stock Out"])
             quantity = st.number_input("Quantity", min_value=0.0, format="%f")
             remarks = st.text_area("Remarks (Optional)")
@@ -225,4 +225,5 @@ st.info("No data available to download.")
 if __name__ == "__main__":
     run()
 # ---------- END PART 2 ----------
+
 
