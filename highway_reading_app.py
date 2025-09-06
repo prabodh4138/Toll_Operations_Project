@@ -96,7 +96,7 @@ st.info(f"Opening KVAH: {opening_kvah:.2f}")
                 supabase.table("highway_live_status").upsert(live_payload, on_conflict="toll_plaza,consumer_number").execute()
  
                 st.success("✅ Reading submitted successfully.")
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"❌ Submission failed: {e}")
  
@@ -134,14 +134,14 @@ st.info("No readings found.")
                         "opening_kwh": float(opening_kwh),
                         "opening_kvah": float(opening_kvah),
                     }
-                    # Insert into highway_consumers but avoid duplicates by using upsert on unique key if available
+                    # Use upsert with on_conflict so duplicate rows are not created
                     supabase.table("highway_consumers").upsert(consumer_payload, on_conflict="toll_plaza,consumer_number").execute()
  
                     # Initialize live status (use on_conflict so it updates if exists)
                     supabase.table("highway_live_status").upsert(consumer_payload, on_conflict="toll_plaza,consumer_number").execute()
  
                     st.success("✅ Consumer added and initialized successfully.")
-                    st.experimental_rerun()
+                    st.rerun()
             except Exception as e:
                 st.error(f"❌ Initialization failed: {e}")
  
