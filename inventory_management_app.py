@@ -209,7 +209,7 @@ def run():
             codes = [row["material_code"] for row in supabase.table("material_stock").select("material_code").eq("toll_plaza", tp).execute().data]
             st.dataframe(df[df["material_code"].isin(codes)].head(10))
         else:
-st.info("No transactions found.")
+            st.info("No transactions found.")
  
     elif choice == "Download CSV":
         st.header("📥 Download All Transactions")
@@ -219,11 +219,12 @@ st.info("No transactions found.")
             csv = df.to_csv(index=False).encode("utf-8")
             st.download_button("Download All Transactions CSV", data=csv, file_name="all_inventory_transactions.csv", mime="text/csv")
         else:
-st.info("No data available to download.")
+            st.info("No data available to download.")
  
  
 if __name__ == "__main__":
     run()
 # ---------- END PART 2 ----------
+
 
 
