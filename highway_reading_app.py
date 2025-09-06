@@ -50,12 +50,12 @@ def run():
         except Exception as e:
             st.warning(f"Error fetching live data: {e}")
  
-st.info(f"Opening KWH: {opening_kwh:.2f}")
+        st.info(f"Opening KWH: {opening_kwh:.2f}")
         closing_kwh = st.number_input("Closing KWH", min_value=opening_kwh, format="%.2f")
         net_kwh = float(closing_kwh) - float(opening_kwh)
         st.success(f"Net KWH: {net_kwh:.2f}")
  
-st.info(f"Opening KVAH: {opening_kvah:.2f}")
+        st.info(f"Opening KVAH: {opening_kvah:.2f}")
         closing_kvah = st.number_input("Closing KVAH", min_value=opening_kvah, format="%.2f")
         net_kvah = float(closing_kvah) - float(opening_kvah)
         st.success(f"Net KVAH: {net_kvah:.2f}")
@@ -109,7 +109,7 @@ st.info(f"Opening KVAH: {opening_kvah:.2f}")
                 df = pd.DataFrame(readings_resp.data)
                 st.dataframe(df)
             else:
-st.info("No readings found.")
+               st.info("No readings found.")
         except Exception as e:
             st.error(f"Error fetching data: {e}")
  
@@ -167,4 +167,5 @@ st.info("No data available for download.")
  
 if __name__ == "__main__":
     run()
+
 
