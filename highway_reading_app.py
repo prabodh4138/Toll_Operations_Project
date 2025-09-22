@@ -108,7 +108,7 @@ def run():
                 ensure_consumer(toll, consumer, float(opening_kwh), float(opening_kvah), debug=debug)
                 ensure_live_status(toll, consumer, float(opening_kwh), float(opening_kvah), debug=debug)
                 st.success("Consumer added/initialized.")
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"Init failed: {e}")
  
@@ -127,3 +127,4 @@ def run():
  
 if __name__ == "__main__":
     run()
+
