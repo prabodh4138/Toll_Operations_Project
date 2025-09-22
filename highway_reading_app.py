@@ -83,7 +83,7 @@ def run():
                 # update live status by select -> update/insert (no ON CONFLICT)
                 ensure_live_status(toll, consumer, float(closing_kwh), float(closing_kvah), debug=debug)
                 st.success("Reading submitted. Closing saved as next opening.")
-                st.experimental_rerun()
+                st.rerun()
             except Exception as e:
                 st.error(f"Submission failed: {e}")
  
@@ -127,5 +127,6 @@ def run():
  
 if __name__ == "__main__":
     run()
+
 
 
