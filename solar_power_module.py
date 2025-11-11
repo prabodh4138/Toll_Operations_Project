@@ -26,11 +26,11 @@ def _get_client() -> Client:
     return create_client(SUPABASE_URL, SUPABASE_KEY)
  
 REMARKS_OPTIONS = [
-    "Normal weather",
-    "Cloudy weather",
+    "Weather almost clear",
+    "Cloudy day",
     "Raining",
     "Power cut",
-    "Partially cloud",
+    "Partly cloud",
     "Maintenance activity",
     "Others",
 ]
