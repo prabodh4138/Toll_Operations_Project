@@ -28,7 +28,7 @@ def _get_client() -> Client:
 REMARKS_OPTIONS = [
     "Weather almost clear",
     "Cloudy day",
-    "Raining",
+    "Rain",
     "Power cut",
     "Partly cloud",
     "Maintenance activity",
