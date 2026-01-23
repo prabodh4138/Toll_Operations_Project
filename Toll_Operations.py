@@ -1,5 +1,6 @@
 # Toll_Operations.py
 import importlib
+import sys
 import streamlit as st
 
 st.set_page_config(page_title="Sekura Toll Ops", layout="wide")
@@ -12,26 +13,25 @@ MODULES = {
     "Solar Generation": "solar_power_module",
 }
 
-# 🔑 Module cache
-_LOADED_MODULES = {}
-
 def load_module(mod_name: str):
     try:
-        if mod_name in _LOADED_MODULES:
-            # 🔥 FORCE reload updated code
-            return importlib.reload(_LOADED_MODULES[mod_name])
+        if mod_name in sys.modules:
+            # 🔥 THIS IS THE KEY LINE
+            return importlib.reload(sys.modules[mod_name])
         else:
-            module = importlib.import_module(mod_name)
-            _LOADED_MODULES[mod_name] = module
-            return module
+            return importlib.import_module(mod_name)
     except Exception as e:
-        st.error(f"❌ Failed to load `{mod_name}`: {e}")
+        st.error(f"❌ Failed to load `{mod_name}`")
+        st.exception(e)
         return None
 
 def main():
     st.title("🛣️ Sekura Toll Plaza Operations Dashboard")
 
-    choice = st.sidebar.selectbox("Select Module", list(MODULES.keys()))
+    choice = st.sidebar.selectbox(
+        "Select Module",
+        list(MODULES.keys())
+    )
 
     module_name = MODULES[choice]
     mod = load_module(module_name)
@@ -40,18 +40,10 @@ def main():
         return
 
     if not hasattr(mod, "run"):
-        st.error(f"❌ `{module_name}` has no `run()` function.")
+        st.error(f"❌ `{module_name}` has no run() function")
         return
 
-    try:
-        mod.run()
-    except Exception as e:
-        st.exception(e)
+    mod.run()
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
