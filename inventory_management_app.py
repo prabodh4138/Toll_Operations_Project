@@ -44,7 +44,7 @@ def run():
                 st.session_state.logged_in = True
                 st.session_state.user_plaza = plaza
                 st.success(f"✅ Logged in as {plaza}")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("❌ Invalid credentials")
         return
@@ -53,7 +53,7 @@ def run():
     st.sidebar.success(f"Logged in Plaza: {st.session_state.user_plaza}")
     if st.sidebar.button("Logout"):
         st.session_state.clear()
-        st.experimental_rerun()
+        st.rerun()
 
     menu = ["User Block", "Admin Block", "Last 10 Transactions", "Download CSV"]
     choice = st.sidebar.selectbox("Select Action", menu)
@@ -197,4 +197,5 @@ def run():
 
 if __name__ == "__main__":
     run()
+
 
