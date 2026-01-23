@@ -171,7 +171,7 @@ def run():
                 }).execute()
 
                 st.success("✅ Transaction completed")
-                st.experimental_rerun()
+                st.rerun()
 
     # ---------- LAST 10 ----------
     elif choice == "Last 10 Transactions":
@@ -197,3 +197,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+
