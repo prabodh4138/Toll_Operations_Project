@@ -1,3 +1,5 @@
+import streamlit as st
+st.error("🔥 INVENTORY MODULE RELOADED 🔥")
 import os
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -378,3 +380,4 @@ def run():
 
 if __name__ == "__main__":
     run()
+
